@@ -1,0 +1,139 @@
+import type { Locale, RoomErrorCode } from '../domain/types';
+
+export interface TranslationDictionary {
+  localeCode: Locale;
+  localeName: string;
+  defaultGuestName: string;
+  brand: {
+    name: string;
+    slogan: string;
+  };
+  localeSelector: {
+    label: string;
+  };
+  theme: {
+    light: string;
+    dark: string;
+    switchToDark: string;
+    switchToLight: string;
+    toggleLabel: string;
+  };
+  entry: {
+    title: string;
+    subtitle: string;
+    roomCodeLabel: string;
+    roomCodePlaceholder: string;
+    displayNameLabel: string;
+    displayNamePlaceholder: string;
+    joinButton: string;
+    connecting: string;
+    orDivider: string;
+    createButton: string;
+    modeLabel: string;
+    normalMode: string;
+    normalModeDescription: string;
+    torMode: string;
+    torModeDescription: string;
+  };
+  errors: Record<RoomErrorCode, string> & {
+    mediaPermissionDenied: string;
+    mediaUnavailable: string;
+  };
+  room: {
+    sidebarAriaLabel: string;
+    currentRoom: string;
+    copyCode: string;
+    copyCodeHeader: string;
+    copyCodeSidebar: string;
+    codeCopied: string;
+    copyLink: string;
+    linkCopied: string;
+    share: string;
+    participants: string;
+    aboutRoom: string;
+    shortcuts: string;
+    preferences: string;
+    waitingForSomeone: string;
+    onePersonOnline: string;
+    twoPeopleOnline: string;
+    peopleOnline: (count: number) => string;
+    you: string;
+    youWithName: (name: string) => string;
+    expiresIn1h: string;
+    roomExpiresIn1h: string;
+    roomCreatedBadge: string;
+    connectedToRoom: (roomCode: string) => string;
+    emptyGuestHint: string;
+    optionsMenu: string;
+    privacyAndMediaSettings: string;
+    leaveRoom: string;
+    leaveShort: string;
+    confirmLeaveTitle: string;
+    confirmLeaveBody: string;
+    confirmLeaveCancel: string;
+    confirmLeaveConfirm: string;
+    expiredTitle: string;
+    expiredBody: string;
+    expiredAction: string;
+  };
+  messages: {
+    listAriaLabel: string;
+    composerAriaLabel: string;
+    composerPlaceholder: string;
+    sendAriaLabel: string;
+    emojiPickerLabel: string;
+    attachmentLabel: string;
+    attachmentEphemeralNotice: string;
+    typingIndicator: (name: string) => string;
+    scrollToLatest: string;
+  };
+  e2ee: {
+    protectedBadge: string;
+    verifyAction: string;
+    sasTitle: string;
+    sasDescription: string;
+    sasCodeLabel: string;
+    close: string;
+  };
+  inactivity: {
+    expiresIn: (formatted: string) => string;
+    warningBanner: string;
+    criticalBanner: string;
+    renewActivity: string;
+  };
+  videoCall: {
+    startCall: string;
+    torBlockedNotice: string;
+    previewTitle: string;
+    previewConfirm: string;
+    previewCancel: string;
+    youWithCameraOn: string;
+    muteMic: string;
+    unmuteMic: string;
+    disableCamera: string;
+    enableCamera: string;
+    shareScreen: string;
+    stopScreenShare: string;
+    endCall: string;
+    layoutHybrid: string;
+    layoutPip: string;
+    layoutFocus: string;
+    peerMuted: (name: string) => string;
+    peerCameraOff: (name: string) => string;
+    peerLeftCall: (name: string) => string;
+  };
+  torMode: {
+    badge: string;
+    onionInstructionsTitle: string;
+    onionInstructionsBody: string;
+    securityLevelNotice: string;
+  };
+  privacy: {
+    settingsTitle: string;
+    antiPrintscreenToggle: string;
+    watermarkToggle: string;
+    blurCurtainTitle: string;
+    blurCurtainHint: string;
+    honestDisclaimer: string;
+  };
+}
