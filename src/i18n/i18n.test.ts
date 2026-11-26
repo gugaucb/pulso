@@ -33,6 +33,13 @@ describe('i18n core utilities', () => {
       expect(dict.localeCode).toBe(locale);
       expect(dict.brand.name).toBe('PULSO');
       expect(dict.entry.createButton.length).toBeGreaterThan(0);
+      expect(dict.entry.torLauncherRequiredTitle.length).toBeGreaterThan(0);
+      expect(dict.entry.torLauncherRequiredBody.length).toBeGreaterThan(0);
+      expect(dict.entry.torLauncherCommand).toBe('npm run start:tor');
+      expect(dict.entry.torRuntimeLockedNotice.length).toBeGreaterThan(0);
+      expect(dict.entry.torStatusBootstrapping.length).toBeGreaterThan(0);
+      expect(dict.entry.torStatusReady.length).toBeGreaterThan(0);
+      expect(dict.entry.torStatusError.length).toBeGreaterThan(0);
       expect(dict.room.peopleOnline(2).length).toBeGreaterThan(0);
       expect(dict.room.statusReconnecting.length).toBeGreaterThan(0);
       expect(dict.room.reconnectingBanner.length).toBeGreaterThan(0);

@@ -6,6 +6,7 @@ import type {
   RoomErrorCode,
   RoomExpiryReason,
   RoomMode,
+  RuntimeInfo,
   WireEncryptedEnvelope,
 } from '../../shared/protocol';
 
@@ -17,6 +18,7 @@ export type {
   RoomErrorCode,
   RoomExpiryReason,
   RoomMode,
+  RuntimeInfo,
   WireEncryptedEnvelope,
 };
 

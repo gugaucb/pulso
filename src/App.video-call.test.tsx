@@ -376,10 +376,18 @@ describe('Video Call flow (Normal Mode)', () => {
     const torMedia = new FakeMediaPort();
     const torIceSpy = vi.spyOn(torMedia, 'setIceServers');
     const torView = render(
-      <App transport={transportWithIce} mediaPort={torMedia} initialLocale="en" />,
+      <App
+        transport={transportWithIce}
+        mediaPort={torMedia}
+        initialLocale="en"
+        runtimeInfo={{
+          runtimeMode: 'tor',
+          torStatus: 'ready',
+          onionAddress: `http://${'q'.repeat(56)}.onion`,
+        }}
+      />,
     );
     const tor = within(torView.container);
-    await user.click(tor.getByRole('radio', { name: /tor mode/i }));
     await user.click(tor.getByRole('button', { name: /create new room/i }));
     await waitFor(() => {
       expect(tor.getByText(/your room has been created!/i)).toBeInTheDocument();

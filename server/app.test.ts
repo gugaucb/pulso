@@ -62,6 +62,47 @@ describe('Fastify app in-process seam (inject + injectWS)', () => {
     expect(api404.statusCode).toBe(404);
   });
 
+  it('returns live runtime updates from getRuntimeInfo on GET /api/runtime without exposing extra fields', async () => {
+    let currentRuntime = {
+      runtimeMode: 'tor' as const,
+      torStatus: 'bootstrapping' as const,
+      onionAddress: undefined as string | undefined,
+    };
+
+    const app = await createServer({
+      getRuntimeInfo: () => ({
+        runtimeMode: currentRuntime.runtimeMode,
+        torStatus: currentRuntime.torStatus,
+        ...(currentRuntime.onionAddress ? { onionAddress: currentRuntime.onionAddress } : {}),
+        // Ensure unexpected fields (if any) are never serialized if leaked by caller
+        ...({ roomCode: 'X9K2-P7M4', participantId: 'secret-id' } as Record<string, unknown>),
+      }),
+    });
+    cleanups.push(() => app.close());
+
+    const bootstrappingRes = await app.inject({ method: 'GET', url: '/api/runtime' });
+    expect(bootstrappingRes.statusCode).toBe(200);
+    expect(bootstrappingRes.json()).toEqual({
+      runtimeMode: 'tor',
+      torStatus: 'bootstrapping',
+    });
+
+    const onion = `http://${'a'.repeat(56)}.onion`;
+    currentRuntime = {
+      runtimeMode: 'tor',
+      torStatus: 'ready',
+      onionAddress: onion,
+    };
+
+    const readyRes = await app.inject({ method: 'GET', url: '/api/runtime' });
+    expect(readyRes.statusCode).toBe(200);
+    expect(readyRes.json()).toEqual({
+      runtimeMode: 'tor',
+      torStatus: 'ready',
+      onionAddress: onion,
+    });
+  });
+
   it('coordinates 1:1 WebSocket room lifecycle over /ws', async () => {
     const app = await createServer({
       clock: new ManualClock(1_700_000_000_000),

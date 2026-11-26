@@ -34,6 +34,13 @@ export const ptBr: TranslationDictionary = {
     normalModeDescription: 'Web padrão com Mensagem Efêmera e Chamada de Vídeo opcional.',
     torMode: 'Modo Tor',
     torModeDescription: 'Endereço .onion exclusivo para texto, sem Chamada de Vídeo.',
+    torLauncherRequiredTitle: 'Modo Tor requer o launcher local',
+    torLauncherRequiredBody: 'Esta instância está em Modo Normal e não simula endereços .onion. Para publicar uma Sala em Modo Tor real, o Anfitrião deve iniciar o launcher local no computador:',
+    torLauncherCommand: 'npm run start:tor',
+    torRuntimeLockedNotice: 'Instância travada em Modo Tor real (somente Mensagem Efêmera; Chamada de Vídeo desativada).',
+    torStatusBootstrapping: 'Inicializando rede Tor e publicando o endereço .onion…',
+    torStatusReady: 'Serviço .onion pronto para criar a Sala.',
+    torStatusError: 'Falha ao iniciar o daemon Tor. Verifique o binário tor (ou PULSO_TOR_BIN) e reinicie o launcher local.',
   },
   errors: {
     invalid_code: 'Código da sala inválido. Verifique os 8 caracteres (ex.: A7K9-M2P4).',

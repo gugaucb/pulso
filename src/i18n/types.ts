@@ -34,6 +34,13 @@ export interface TranslationDictionary {
     normalModeDescription: string;
     torMode: string;
     torModeDescription: string;
+    torLauncherRequiredTitle: string;
+    torLauncherRequiredBody: string;
+    torLauncherCommand: string;
+    torRuntimeLockedNotice: string;
+    torStatusBootstrapping: string;
+    torStatusReady: string;
+    torStatusError: string;
   };
   errors: Record<RoomErrorCode, string> & {
     mediaPermissionDenied: string;
