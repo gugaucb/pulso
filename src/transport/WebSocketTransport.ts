@@ -236,7 +236,7 @@ export class WebSocketTransport implements RoomTransport {
           mode: msg.mode,
           onionAddress: msg.onionAddress,
           expiresAt: msg.expiresAt,
-          iceServers: msg.iceServers,
+          ...(msg.mode !== 'tor' && msg.iceServers ? { iceServers: msg.iceServers } : {}),
         });
         break;
       }

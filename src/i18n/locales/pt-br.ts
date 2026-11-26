@@ -40,6 +40,7 @@ export const ptBr: TranslationDictionary = {
     room_not_found: 'Sala não encontrada ou já expirada.',
     room_full: 'Esta sala 1:1 já está ocupada por 2 participantes.',
     room_expired: 'Esta sala expirou ou foi encerrada pelo anfitrião.',
+    tor_video_blocked: 'Chamadas de vídeo são bloqueadas no Modo Tor para proteger seu anonimato.',
     transport_error: 'Não foi possível conectar à sala. Tente novamente.',
     mediaPermissionDenied: 'Permissão de câmera ou microfone negada. Você pode continuar trocando mensagens efêmeras.',
     mediaUnavailable: 'Não foi possível acessar câmera ou microfone neste dispositivo.',

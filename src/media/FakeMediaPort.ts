@@ -39,6 +39,7 @@ export class FakeMediaPort implements MediaPort {
   private readonly listeners = new Set<(event: MediaPortEvent) => void>();
   private signalSender: ((signal: CallSignal) => Promise<void>) | null = null;
   private localParticipantId: string | null = null;
+  private iceServers: RTCIceServer[] = [];
 
   private permissionDenied: boolean;
   private mediaUnavailable: boolean;
@@ -82,6 +83,14 @@ export class FakeMediaPort implements MediaPort {
 
   setSignalSender(sender: ((signal: CallSignal) => Promise<void>) | null): void {
     this.signalSender = sender;
+  }
+
+  setIceServers(iceServers: RTCIceServer[]): void {
+    this.iceServers = iceServers.map((server) => ({ ...server }));
+  }
+
+  getIceServers(): RTCIceServer[] {
+    return this.iceServers;
   }
 
   private async sendMediaStateSignal(): Promise<void> {

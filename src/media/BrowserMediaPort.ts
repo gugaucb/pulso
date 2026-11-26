@@ -38,9 +38,11 @@ export class BrowserMediaPort implements MediaPort {
   private signalSender: ((signal: CallSignal) => Promise<void>) | null = null;
   private localParticipantId: string | null = null;
   private peerConnection: RTCPeerConnection | null = null;
+  private iceServers: RTCIceServer[] = [];
   private cameraStream: MediaStream | null = null;
   private screenStream: MediaStream | null = null;
   private pendingOffer: RTCSessionDescriptionInit | null = null;
+  private pendingIceCandidates: RTCIceCandidateInit[] = [];
   private audioContext: AudioContext | null = null;
   private audioTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -68,6 +70,10 @@ export class BrowserMediaPort implements MediaPort {
 
   setSignalSender(sender: ((signal: CallSignal) => Promise<void>) | null): void {
     this.signalSender = sender;
+  }
+
+  setIceServers(iceServers: RTCIceServer[]): void {
+    this.iceServers = iceServers.map((server) => ({ ...server }));
   }
 
   private async enumerateMediaDevices(): Promise<{
@@ -300,7 +306,7 @@ export class BrowserMediaPort implements MediaPort {
     if (typeof RTCPeerConnection === 'undefined') return null;
 
     const pc = new RTCPeerConnection({
-      iceServers: [],
+      iceServers: this.iceServers,
     });
 
     pc.onicecandidate = (event) => {
@@ -320,6 +326,12 @@ export class BrowserMediaPort implements MediaPort {
       }
     };
 
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'failed') {
+        this.updateSnapshot({ error: 'connection_failed' });
+      }
+    };
+
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed') {
         this.updateSnapshot({ error: 'connection_failed' });
@@ -328,6 +340,23 @@ export class BrowserMediaPort implements MediaPort {
 
     this.peerConnection = pc;
     return pc;
+  }
+
+  private async applyRemoteDescription(
+    pc: RTCPeerConnection,
+    description: RTCSessionDescriptionInit,
+  ): Promise<void> {
+    await pc.setRemoteDescription(description);
+    if (this.pendingIceCandidates.length === 0) return;
+    const queued = this.pendingIceCandidates.splice(0);
+    for (const candidate of queued) {
+      if (this.peerConnection !== pc) break;
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch {
+        // Ignore stale ICE candidates
+      }
+    }
   }
 
   private async sendMediaStateSignal(): Promise<void> {
@@ -381,7 +410,7 @@ export class BrowserMediaPort implements MediaPort {
         if (this.pendingOffer) {
           const offerToApply = this.pendingOffer;
           this.pendingOffer = null;
-          await pc.setRemoteDescription(offerToApply);
+          await this.applyRemoteDescription(pc, offerToApply);
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           if (this.signalSender) {
@@ -426,6 +455,7 @@ export class BrowserMediaPort implements MediaPort {
     const participantId = this.localParticipantId;
     this.localParticipantId = null;
     this.pendingOffer = null;
+    this.pendingIceCandidates = [];
     this.stopAudioMeter();
 
     if (this.peerConnection) {
@@ -562,6 +592,7 @@ export class BrowserMediaPort implements MediaPort {
     if (remoteStateResult) {
       if (signal.type === 'hangup') {
         this.pendingOffer = null;
+        this.pendingIceCandidates = [];
       }
       this.updateSnapshot(remoteStateResult.patch);
       for (const event of remoteStateResult.events) {
@@ -579,7 +610,7 @@ export class BrowserMediaPort implements MediaPort {
       const pc = this.ensurePeerConnection();
       if (!pc) return;
       try {
-        await pc.setRemoteDescription(offer);
+        await this.applyRemoteDescription(pc, offer);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         if (this.signalSender && this.localParticipantId) {
@@ -599,7 +630,7 @@ export class BrowserMediaPort implements MediaPort {
       const pc = this.peerConnection;
       if (!pc) return;
       try {
-        await pc.setRemoteDescription(signal.payload as RTCSessionDescriptionInit);
+        await this.applyRemoteDescription(pc, signal.payload as RTCSessionDescriptionInit);
       } catch {
         this.updateSnapshot({ error: 'connection_failed' });
       }
@@ -607,10 +638,14 @@ export class BrowserMediaPort implements MediaPort {
     }
 
     if (signal.type === 'ice' && signal.payload) {
+      const candidate = signal.payload as RTCIceCandidateInit;
       const pc = this.peerConnection;
-      if (!pc || !pc.remoteDescription) return;
+      if (!pc || !pc.remoteDescription) {
+        this.pendingIceCandidates.push(candidate);
+        return;
+      }
       try {
-        await pc.addIceCandidate(signal.payload as RTCIceCandidateInit);
+        await pc.addIceCandidate(candidate);
       } catch {
         // Ignore stale ICE candidates
       }

@@ -32,6 +32,7 @@ export type RoomErrorCode =
   | 'room_not_found'
   | 'room_full'
   | 'room_expired'
+  | 'tor_video_blocked'
   | 'transport_error';
 
 export interface CallSignal {

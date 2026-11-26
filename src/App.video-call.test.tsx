@@ -1,9 +1,11 @@
 import { render, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+import type { TransportEvent } from './domain/types';
 import { FakeMediaPort } from './media/FakeMediaPort';
 import { InMemoryTransportHub } from './transport/InMemoryTransport';
+import type { RoomTransport } from './transport/RoomTransport';
 
 async function setupConnectedPair(options?: {
   hostMedia?: FakeMediaPort;
@@ -325,5 +327,64 @@ describe('Video Call flow (Normal Mode)', () => {
     await waitFor(() => {
       expect(host.getByText(/guest left the video call/i)).toBeInTheDocument();
     });
+  });
+
+  it('propagates iceServers from room_joined to MediaPort in Normal mode and skips in Tor mode', async () => {
+    const user = userEvent.setup();
+    const hub = new InMemoryTransportHub();
+    const baseTransport = hub.createTransport();
+    const iceFromServer = [
+      { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    ];
+
+    const transportWithIce: RoomTransport = {
+      ...baseTransport,
+      createRoom: (p) => baseTransport.createRoom(p),
+      joinRoom: (p) => baseTransport.joinRoom(p),
+      leaveRoom: () => baseTransport.leaveRoom(),
+      sendEncryptedMessage: (e) => baseTransport.sendEncryptedMessage(e),
+      sendKeyExchange: (k, o) => baseTransport.sendKeyExchange(k, o),
+      setTyping: (t) => baseTransport.setTyping(t),
+      sendCallSignal: (s) => baseTransport.sendCallSignal(s),
+      notifyActivity: () => baseTransport.notifyActivity(),
+      dispose: () => baseTransport.dispose(),
+      subscribe: (listener) =>
+        baseTransport.subscribe((event: TransportEvent) => {
+          if (event.type === 'room_joined') {
+            listener({ ...event, iceServers: iceFromServer });
+            return;
+          }
+          listener(event);
+        }),
+    };
+
+    const normalMedia = new FakeMediaPort();
+    const setIceSpy = vi.spyOn(normalMedia, 'setIceServers');
+
+    const normalView = render(
+      <App transport={transportWithIce} mediaPort={normalMedia} initialLocale="en" />,
+    );
+    const normal = within(normalView.container);
+    await user.click(normal.getByRole('button', { name: /create new room/i }));
+    await waitFor(() => {
+      expect(normal.getByText(/your room has been created!/i)).toBeInTheDocument();
+    });
+    expect(setIceSpy).toHaveBeenCalledWith(iceFromServer);
+    expect(normalMedia.getIceServers()).toEqual(iceFromServer);
+
+    // Even if a rogue transport delivered iceServers on a Tor room, MediaPort.setIceServers must never be called
+    const torMedia = new FakeMediaPort();
+    const torIceSpy = vi.spyOn(torMedia, 'setIceServers');
+    const torView = render(
+      <App transport={transportWithIce} mediaPort={torMedia} initialLocale="en" />,
+    );
+    const tor = within(torView.container);
+    await user.click(tor.getByRole('radio', { name: /tor mode/i }));
+    await user.click(tor.getByRole('button', { name: /create new room/i }));
+    await waitFor(() => {
+      expect(tor.getByText(/your room has been created!/i)).toBeInTheDocument();
+    });
+    expect(torIceSpy).not.toHaveBeenCalled();
+    expect(torMedia.getIceServers()).toEqual([]);
   });
 });
