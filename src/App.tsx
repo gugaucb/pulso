@@ -1,8 +1,11 @@
+import { useEffect } from 'react';
 import { EntryScreen } from './components/EntryScreen';
+import { ExpiredRoomScreen } from './components/modals/ExpiredRoomScreen';
 import { RoomScreen } from './components/RoomScreen';
 import type { Locale, Theme } from './domain/types';
 import { I18nProvider, useI18n } from './i18n';
 import type { MediaPort } from './media/MediaPort';
+import { getVideoCallHeartbeatMs } from './session/inactivityTimer';
 import { useRoomSession } from './session/useRoomSession';
 import { useVideoCall } from './session/useVideoCall';
 import { ThemeProvider, useTheme } from './theme/ThemeContext';
@@ -52,6 +55,18 @@ function AppContent({
     isInRoom,
   });
 
+  useEffect(() => {
+    if (!isInRoom || !videoCall.isCallActive) return;
+    void session.renewActivity();
+    const heartbeatMs = getVideoCallHeartbeatMs(session.inactivityDurationMs);
+    const intervalId = setInterval(() => {
+      void session.renewActivity();
+    }, heartbeatMs);
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [isInRoom, session.inactivityDurationMs, session.renewActivity, videoCall.isCallActive]);
+
   const participantsWithVideo = session.participants.map((participant) => {
     if (participant.id === session.localParticipant?.id) {
       return {
@@ -96,10 +111,15 @@ function AppContent({
           sasCode={session.sasCode}
           e2eeReady={session.e2eeReady}
           hasLinkSecret={session.hasLinkSecret}
+          inactivityRemainingMs={session.inactivityRemainingMs}
+          inactivityAlertLevel={session.inactivityAlertLevel}
+          onRenewActivity={session.renewActivity}
           onSendMessage={session.sendMessage}
           onTypingChange={session.setTyping}
           onLeaveRoom={session.leaveRoom}
         />
+      ) : session.status === 'expired' ? (
+        <ExpiredRoomScreen onReturnToEntry={session.returnToEntry} />
       ) : (
         <EntryScreen
           status={session.status}

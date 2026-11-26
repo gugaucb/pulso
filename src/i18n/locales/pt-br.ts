@@ -117,6 +117,8 @@ export const ptBr: TranslationDictionary = {
     warningBanner: 'A sala será autodestruída em breve por inatividade.',
     criticalBanner: 'Menos de 1 minuto para expirar. Envie uma mensagem ou renove a atividade.',
     renewActivity: 'Renovar contador',
+    confirmPresence: 'Confirmar presença',
+    expiredPurgeNotice: 'Todas as mensagens efêmeras e chaves criptográficas foram apagadas definitivamente da memória.',
   },
   videoCall: {
     startCall: 'Iniciar chamada de vídeo',
