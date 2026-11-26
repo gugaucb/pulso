@@ -249,12 +249,13 @@ class InMemoryClient implements RoomTransport {
     this.hub._forwardToPeer(this, { type: 'encrypted_message', envelope });
   }
 
-  async sendKeyExchange(publicKeyJwk: JsonWebKey): Promise<void> {
+  async sendKeyExchange(publicKeyJwk: JsonWebKey, options?: { hasSecret?: boolean }): Promise<void> {
     if (this.disposed || !this.participant) return;
     this.hub._forwardToPeer(this, {
       type: 'key_exchange',
       senderId: this.participant.id,
       publicKeyJwk,
+      hasSecret: options?.hasSecret,
     });
   }
 

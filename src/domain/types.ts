@@ -87,6 +87,7 @@ export type TransportEvent =
       type: 'key_exchange';
       senderId: string;
       publicKeyJwk: JsonWebKey;
+      hasSecret?: boolean;
     }
   | {
       type: 'typing';
