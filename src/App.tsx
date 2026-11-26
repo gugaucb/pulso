@@ -2,9 +2,10 @@ import { useEffect } from 'react';
 import { EntryScreen } from './components/EntryScreen';
 import { ExpiredRoomScreen } from './components/modals/ExpiredRoomScreen';
 import { RoomScreen } from './components/RoomScreen';
-import type { Locale, Theme } from './domain/types';
+import type { Locale, RuntimeInfo, Theme } from './domain/types';
 import { I18nProvider, useI18n } from './i18n';
 import type { MediaPort } from './media/MediaPort';
+import { useRuntimeInfo } from './runtime/useRuntimeInfo';
 import { getVideoCallHeartbeatMs } from './session/inactivityTimer';
 import { useRoomSession } from './session/useRoomSession';
 import { useVideoCall } from './session/useVideoCall';
@@ -18,6 +19,7 @@ export interface AppProps {
   inactivityDurationMs?: number;
   initialLocale?: Locale;
   initialTheme?: Theme;
+  runtimeInfo?: RuntimeInfo;
 }
 
 function AppContent({
@@ -25,15 +27,18 @@ function AppContent({
   mediaPort,
   initialUrl,
   inactivityDurationMs,
+  runtimeInfo: runtimeInfoProp,
 }: Omit<AppProps, 'initialLocale' | 'initialTheme'>) {
   const { locale, t } = useI18n();
   const { theme } = useTheme();
+  const runtimeInfo = useRuntimeInfo(runtimeInfoProp);
   const session = useRoomSession({
     transport,
     initialUrl,
     inactivityDurationMs,
     initialLocale: locale,
     defaultDisplayName: t.defaultGuestName,
+    runtimeInfo,
   });
 
   const isInRoom = Boolean(
@@ -143,6 +148,7 @@ function AppContent({
         <EntryScreen
           status={session.status}
           errorCode={session.errorCode}
+          runtimeInfo={runtimeInfo}
           onCreateRoom={session.createRoom}
           onJoinRoom={session.joinRoom}
           onClearError={session.clearError}
@@ -159,6 +165,7 @@ export function App({
   inactivityDurationMs,
   initialLocale,
   initialTheme = 'light',
+  runtimeInfo,
 }: AppProps) {
   return (
     <ThemeProvider initialTheme={initialTheme}>
@@ -168,6 +175,7 @@ export function App({
           mediaPort={mediaPort}
           initialUrl={initialUrl}
           inactivityDurationMs={inactivityDurationMs}
+          runtimeInfo={runtimeInfo}
         />
       </I18nProvider>
     </ThemeProvider>

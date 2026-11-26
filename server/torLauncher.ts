@@ -1,0 +1,222 @@
+import { realpathSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { FastifyInstance } from 'fastify';
+import type { RuntimeInfo } from '../shared/protocol';
+import { createServer } from './app';
+import type { Clock } from './clock';
+import {
+  TorController,
+  type TorControllerOptions,
+  type TorControllerState,
+} from './tor/torController';
+
+const DEFAULT_PORT = 3001;
+const LOOPBACK_HOST = '127.0.0.1';
+
+export interface TorControllerLike {
+  on(event: 'status', listener: (state: TorControllerState) => void): unknown;
+  off?(event: 'status', listener: (state: TorControllerState) => void): unknown;
+  start(): Promise<string>;
+  stop(): Promise<void>;
+}
+
+export interface StartTorServerOptions {
+  port?: number;
+  dataDir?: string;
+  torBinaryPath?: string;
+  env?: NodeJS.ProcessEnv;
+  cwd?: string;
+  staticDir?: string;
+  clock?: Clock;
+  waitForReady?: boolean;
+  registerSignals?: boolean;
+  log?: (message: string) => void;
+  errorLog?: (message: string) => void;
+  createTorController?: (options: TorControllerOptions) => TorControllerLike;
+}
+
+export interface TorServerHandle {
+  app: FastifyInstance;
+  port: number;
+  localUrl: string;
+  torController: TorControllerLike;
+  getRuntimeInfo: () => RuntimeInfo;
+  ready: Promise<string>;
+  stop: () => Promise<void>;
+}
+
+function resolvePort(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.PORT;
+  if (!raw) return DEFAULT_PORT;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PORT;
+}
+
+/**
+ * Starts the Fastify server strictly on 127.0.0.1 coupled to TorController,
+ * exposing live Tor runtime status via GET /api/runtime and purging ./tor_data on stop or failure.
+ */
+export async function startTorServer(options: StartTorServerOptions = {}): Promise<TorServerHandle> {
+  const env = options.env ?? process.env;
+  const cwd = options.cwd ?? process.cwd();
+  const dataDir = options.dataDir ?? path.resolve(cwd, 'tor_data');
+  const requestedPort = options.port ?? resolvePort(env);
+  const log = options.log ?? ((msg: string) => console.info(msg));
+  const errorLog = options.errorLog ?? ((msg: string) => console.error(msg));
+
+  let runtimeInfo: RuntimeInfo = {
+    runtimeMode: 'tor',
+    torStatus: 'bootstrapping',
+  };
+
+  const getRuntimeInfo = (): RuntimeInfo => ({ ...runtimeInfo });
+
+  const app = await createServer({
+    clock: options.clock,
+    staticDir: options.staticDir,
+    getRuntimeInfo,
+  });
+
+  await app.listen({ host: LOOPBACK_HOST, port: requestedPort });
+  const address = app.server.address();
+  const boundPort = typeof address === 'object' && address !== null ? address.port : requestedPort;
+  const localUrl = `http://${LOOPBACK_HOST}:${boundPort}`;
+
+  log(`PULSO Modo Tor host UI available at ${localUrl}`);
+  log('Tor status: bootstrapping...');
+
+  const controllerFactory =
+    options.createTorController ?? ((controllerOptions) => new TorController(controllerOptions));
+  const torController = controllerFactory({
+    localPort: boundPort,
+    dataDir,
+    torBinaryPath: options.torBinaryPath,
+    env,
+    cwd,
+  });
+
+  let readyLogged = false;
+  const onStatus = (state: TorControllerState) => {
+    if (state.status === 'ready' && state.onionAddress) {
+      runtimeInfo = {
+        runtimeMode: 'tor',
+        torStatus: 'ready',
+        onionAddress: state.onionAddress,
+      };
+      if (!readyLogged) {
+        readyLogged = true;
+        log(`Tor status: ready (${state.onionAddress})`);
+      }
+      return;
+    }
+    if (state.status === 'error') {
+      runtimeInfo = {
+        runtimeMode: 'tor',
+        torStatus: 'error',
+      };
+      return;
+    }
+    runtimeInfo = {
+      runtimeMode: 'tor',
+      torStatus: 'bootstrapping',
+    };
+  };
+
+  torController.on('status', onStatus);
+
+  let stopPromise: Promise<void> | undefined;
+  let signalHandler: (() => void) | undefined;
+
+  const detachSignals = () => {
+    if (signalHandler) {
+      process.off('SIGINT', signalHandler);
+      process.off('SIGTERM', signalHandler);
+      signalHandler = undefined;
+    }
+  };
+
+  const stop = async (): Promise<void> => {
+    if (stopPromise) {
+      return stopPromise;
+    }
+    stopPromise = (async () => {
+      detachSignals();
+      torController.off?.('status', onStatus);
+      await torController.stop().catch(() => {});
+      await rm(dataDir, { recursive: true, force: true }).catch(() => {});
+      await app.close().catch(() => {});
+      log('PULSO Modo Tor stopped and tor_data purged.');
+    })();
+    return stopPromise;
+  };
+
+  if (options.registerSignals) {
+    signalHandler = () => {
+      void stop().finally(() => {
+        process.exit(0);
+      });
+    };
+    process.once('SIGINT', signalHandler);
+    process.once('SIGTERM', signalHandler);
+  }
+
+  const ready = torController
+    .start()
+    .then((onionAddress) => {
+      if (runtimeInfo.torStatus !== 'ready' || !runtimeInfo.onionAddress) {
+        runtimeInfo = {
+          runtimeMode: 'tor',
+          torStatus: 'ready',
+          onionAddress,
+        };
+        if (!readyLogged) {
+          readyLogged = true;
+          log(`Tor status: ready (${onionAddress})`);
+        }
+      }
+      return onionAddress;
+    })
+    .catch(async (err) => {
+      const error = err instanceof Error ? err : new Error(String(err));
+      runtimeInfo = {
+        runtimeMode: 'tor',
+        torStatus: 'error',
+      };
+      errorLog(`Failed to start PULSO Modo Tor: ${error.message}`);
+      await stop();
+      throw error;
+    });
+
+  if (options.waitForReady !== false) {
+    await ready;
+  }
+
+  return {
+    app,
+    port: boundPort,
+    localUrl,
+    torController,
+    getRuntimeInfo,
+    ready,
+    stop,
+  };
+}
+
+function isDirectExecution(): boolean {
+  if (process.env.VITEST) return false;
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return fileURLToPath(import.meta.url) === realpathSync(entry);
+  } catch {
+    return fileURLToPath(import.meta.url) === path.resolve(entry);
+  }
+}
+
+if (isDirectExecution()) {
+  startTorServer({ registerSignals: true }).catch(() => {
+    process.exit(1);
+  });
+}

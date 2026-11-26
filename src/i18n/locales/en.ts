@@ -34,6 +34,13 @@ export const en: TranslationDictionary = {
     normalModeDescription: 'Standard web with Ephemeral Messages and optional Video Call.',
     torMode: 'Tor Mode',
     torModeDescription: '.onion text-only room with Video Call disabled.',
+    torLauncherRequiredTitle: 'Tor Mode requires the local launcher',
+    torLauncherRequiredBody: 'This instance is running in Normal Mode and never simulates .onion addresses. To publish a real Tor Mode room, the Host must run the local launcher:',
+    torLauncherCommand: 'npm run start:tor',
+    torRuntimeLockedNotice: 'Instance locked to real Tor Mode (Ephemeral Messages only; Video Call disabled).',
+    torStatusBootstrapping: 'Bootstrapping Tor network and publishing .onion service…',
+    torStatusReady: '.onion service ready to create the room.',
+    torStatusError: 'Failed to start the Tor daemon. Check your tor binary (or PULSO_TOR_BIN) and restart the local launcher.',
   },
   errors: {
     invalid_code: 'Invalid room code. Check the 8 characters (e.g. A7K9-M2P4).',

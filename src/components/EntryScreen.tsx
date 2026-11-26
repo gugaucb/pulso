@@ -1,15 +1,39 @@
 import { useState, type FormEvent } from 'react';
-import { AlertCircle, Globe, Loader2, Moon, PlusCircle, Shield, Sun } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Globe,
+  Loader2,
+  Moon,
+  PlusCircle,
+  Shield,
+  Sun,
+  Terminal,
+} from 'lucide-react';
 import { formatRoomCode, isValidRoomCode, normalizeRoomCode } from '../domain/roomCode';
-import type { ConnectionStatus, Locale, RoomErrorCode, RoomMode } from '../domain/types';
+import type {
+  ConnectionStatus,
+  Locale,
+  RoomErrorCode,
+  RoomMode,
+  RuntimeInfo,
+} from '../domain/types';
 import { LOCALE_OPTIONS, useI18n } from '../i18n';
+import type { CreateRoomOptions } from '../session/useRoomSession';
 import { useTheme } from '../theme/ThemeContext';
 import { PulsoLogo } from './PulsoLogo';
+
+const DEFAULT_RUNTIME_INFO: RuntimeInfo = { runtimeMode: 'normal' };
 
 interface EntryScreenProps {
   status: ConnectionStatus;
   errorCode: RoomErrorCode | null;
-  onCreateRoom: (displayName: string, mode?: RoomMode) => Promise<void>;
+  runtimeInfo?: RuntimeInfo;
+  onCreateRoom: (
+    displayName: string,
+    mode?: RoomMode,
+    options?: CreateRoomOptions,
+  ) => Promise<void>;
   onJoinRoom: (roomCode: string, displayName: string) => Promise<void>;
   onClearError: () => void;
 }
@@ -17,6 +41,7 @@ interface EntryScreenProps {
 export function EntryScreen({
   status,
   errorCode,
+  runtimeInfo = DEFAULT_RUNTIME_INFO,
   onCreateRoom,
   onJoinRoom,
   onClearError,
@@ -29,6 +54,15 @@ export function EntryScreen({
   const [touched, setTouched] = useState(false);
 
   const isConnecting = status === 'connecting';
+  const isTorRuntime = runtimeInfo.runtimeMode === 'tor';
+  const effectiveMode: RoomMode = isTorRuntime ? 'tor' : selectedMode;
+  const torStatus =
+    runtimeInfo.torStatus ?? (runtimeInfo.onionAddress ? 'ready' : 'bootstrapping');
+  const isTorGuidanceInNormal = !isTorRuntime && effectiveMode === 'tor';
+  const isCreateDisabled =
+    isConnecting ||
+    isTorGuidanceInNormal ||
+    (isTorRuntime && torStatus !== 'ready');
   const normalizedLength = normalizeRoomCode(roomCodeInput).length;
   const hasInvalidFormat =
     touched && normalizedLength > 0 && !isValidRoomCode(roomCodeInput);
@@ -54,8 +88,16 @@ export function EntryScreen({
   };
 
   const handleCreateClick = async () => {
+    if (isCreateDisabled) return;
     onClearError();
-    await onCreateRoom(displayName, selectedMode);
+    if (isTorRuntime) {
+      await onCreateRoom(displayName, 'tor', {
+        mode: 'tor',
+        onionAddress: runtimeInfo.onionAddress,
+      });
+      return;
+    }
+    await onCreateRoom(displayName, 'normal');
   };
 
   const isDark = theme === 'dark';
@@ -206,19 +248,21 @@ export function EntryScreen({
           </legend>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <label
-              className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition cursor-pointer ${
-                selectedMode === 'normal'
-                  ? 'border-[#5B3DF5] bg-[#EEF0FF]/70 dark:bg-[#2D2856]/60 dark:border-[#6344F5]'
-                  : 'border-slate-200 dark:border-[#2E3248] bg-slate-50/70 dark:bg-[#141522] hover:border-slate-300 dark:hover:border-slate-600'
+              className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition ${
+                isTorRuntime
+                  ? 'border-slate-200 dark:border-[#2E3248] bg-slate-100/70 dark:bg-[#141522]/60 opacity-60 cursor-not-allowed'
+                  : effectiveMode === 'normal'
+                    ? 'border-[#5B3DF5] bg-[#EEF0FF]/70 dark:bg-[#2D2856]/60 dark:border-[#6344F5] cursor-pointer'
+                    : 'border-slate-200 dark:border-[#2E3248] bg-slate-50/70 dark:bg-[#141522] hover:border-slate-300 dark:hover:border-slate-600 cursor-pointer'
               }`}
             >
               <input
                 type="radio"
                 name="roomMode"
                 value="normal"
-                checked={selectedMode === 'normal'}
+                checked={effectiveMode === 'normal'}
                 onChange={() => setSelectedMode('normal')}
-                disabled={isConnecting}
+                disabled={isConnecting || isTorRuntime}
                 aria-labelledby="mode-normal-title"
                 aria-describedby="mode-normal-desc"
                 className="mt-0.5 accent-[#5B3DF5]"
@@ -241,7 +285,7 @@ export function EntryScreen({
 
             <label
               className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition cursor-pointer ${
-                selectedMode === 'tor'
+                effectiveMode === 'tor'
                   ? 'border-[#5B3DF5] bg-[#EEF0FF]/70 dark:bg-[#2D2856]/60 dark:border-[#6344F5]'
                   : 'border-slate-200 dark:border-[#2E3248] bg-slate-50/70 dark:bg-[#141522] hover:border-slate-300 dark:hover:border-slate-600'
               }`}
@@ -250,7 +294,7 @@ export function EntryScreen({
                 type="radio"
                 name="roomMode"
                 value="tor"
-                checked={selectedMode === 'tor'}
+                checked={effectiveMode === 'tor'}
                 onChange={() => setSelectedMode('tor')}
                 disabled={isConnecting}
                 aria-labelledby="mode-tor-title"
@@ -276,11 +320,83 @@ export function EntryScreen({
           </div>
         </fieldset>
 
+        {isTorGuidanceInNormal && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-3 rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/90 dark:bg-amber-950/40 p-3.5 text-left"
+          >
+            <div className="flex items-start gap-2.5">
+              <Terminal
+                className="h-4 w-4 shrink-0 mt-0.5 text-amber-700 dark:text-amber-300"
+                aria-hidden="true"
+              />
+              <div className="min-w-0 space-y-1.5">
+                <p className="text-xs font-semibold text-amber-950 dark:text-amber-100">
+                  {t.entry.torLauncherRequiredTitle}
+                </p>
+                <p className="text-xs leading-relaxed text-amber-900/90 dark:text-amber-200/90">
+                  {t.entry.torLauncherRequiredBody}
+                </p>
+                <code className="block rounded-lg bg-slate-900 text-slate-100 px-3 py-2 font-mono-tabular text-xs select-all">
+                  {t.entry.torLauncherCommand}
+                </code>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isTorRuntime && (
+          <div className="mb-3 space-y-2 text-left">
+            <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+              <Shield className="h-3.5 w-3.5 shrink-0 text-[#5B3DF5] dark:text-[#818CF8]" aria-hidden="true" />
+              <span>{t.entry.torRuntimeLockedNotice}</span>
+            </p>
+            {torStatus === 'error' ? (
+              <div
+                role="alert"
+                className="flex items-start gap-2.5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800/70 px-3.5 py-2.5 text-xs text-red-700 dark:text-red-200"
+              >
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-500 dark:text-red-400" aria-hidden="true" />
+                <span>{t.entry.torStatusError}</span>
+              </div>
+            ) : (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-start gap-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/80 dark:bg-indigo-950/40 px-3.5 py-2.5 text-xs text-indigo-950 dark:text-indigo-100"
+              >
+                {torStatus === 'ready' ? (
+                  <CheckCircle2
+                    className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Loader2
+                    className="h-4 w-4 shrink-0 mt-0.5 animate-spin text-[#5B3DF5] dark:text-[#818CF8]"
+                    aria-hidden="true"
+                  />
+                )}
+                <div className="min-w-0 space-y-1">
+                  <p className="font-medium">
+                    {torStatus === 'ready' ? t.entry.torStatusReady : t.entry.torStatusBootstrapping}
+                  </p>
+                  {torStatus === 'ready' && runtimeInfo.onionAddress && (
+                    <p className="font-mono-tabular text-[11px] break-all text-indigo-900 dark:text-indigo-200">
+                      {runtimeInfo.onionAddress}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={handleCreateClick}
-          disabled={isConnecting}
-          className="min-h-[44px] w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-[#2E3248] bg-white dark:bg-[#1B1D2C] hover:bg-slate-50 dark:hover:bg-[#2B2F45] active:bg-slate-100 disabled:opacity-60 px-4 py-3 text-sm font-semibold text-[#111827] dark:text-slate-100 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
+          disabled={isCreateDisabled}
+          className="min-h-[44px] w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-[#2E3248] bg-white dark:bg-[#1B1D2C] hover:bg-slate-50 dark:hover:bg-[#2B2F45] active:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-3 text-sm font-semibold text-[#111827] dark:text-slate-100 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
         >
           <PlusCircle className="h-4 w-4 text-[#5B3DF5] dark:text-[#818CF8]" />
           <span>{t.entry.createButton}</span>

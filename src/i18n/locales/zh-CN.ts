@@ -34,6 +34,13 @@ export const zhCN: TranslationDictionary = {
     normalModeDescription: '常规网页模式，支持阅后即焚消息与可选视频通话。',
     torMode: 'Tor 模式',
     torModeDescription: '仅限 .onion 纯文本消息，禁用视频通话。',
+    torLauncherRequiredTitle: 'Tor 模式需要本地启动器',
+    torLauncherRequiredBody: '当前实例运行在标准模式，不会模拟 .onion 地址。要发布真实的 Tor 模式房间，房主必须在本地运行启动器：',
+    torLauncherCommand: 'npm run start:tor',
+    torRuntimeLockedNotice: '当前实例已锁定为真实 Tor 模式（仅限阅后即焚消息，禁用视频通话）。',
+    torStatusBootstrapping: '正在连接 Tor 网络并发布 .onion 服务…',
+    torStatusReady: '.onion 服务已就绪，可以创建房间。',
+    torStatusError: 'Tor 守护进程启动失败。请检查 tor 可执行文件（或 PULSO_TOR_BIN）并重启本地启动器。',
   },
   errors: {
     invalid_code: '房间代码无效，请检查 8 位字符（例如：A7K9-M2P4）。',

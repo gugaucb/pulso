@@ -24,6 +24,7 @@ export interface CreateServerOptions {
   clock?: Clock;
   staticDir?: string;
   runtimeInfo?: RuntimeInfo;
+  getRuntimeInfo?: () => RuntimeInfo;
   inactivityDurationMs?: number;
   hardTtlMs?: number;
   graceWindowMs?: number;
@@ -32,6 +33,23 @@ export interface CreateServerOptions {
   security?: SecurityManager;
   securityOptions?: SecurityOptions;
   iceServersProvider?: () => IceServerConfig[];
+}
+
+function sanitizeRuntimeInfo(info: RuntimeInfo): RuntimeInfo {
+  const sanitized: RuntimeInfo = {
+    runtimeMode: info.runtimeMode === 'tor' ? 'tor' : 'normal',
+  };
+  if (typeof info.onionAddress === 'string' && info.onionAddress.length > 0) {
+    sanitized.onionAddress = info.onionAddress;
+  }
+  if (
+    info.torStatus === 'bootstrapping' ||
+    info.torStatus === 'ready' ||
+    info.torStatus === 'error'
+  ) {
+    sanitized.torStatus = info.torStatus;
+  }
+  return sanitized;
 }
 
 function resolveDefaultStaticDir(): string {
@@ -107,7 +125,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
     security,
     iceServersProvider: options.iceServersProvider,
   });
-  const runtimeInfo: RuntimeInfo = options.runtimeInfo ?? { runtimeMode: 'normal' };
+  const staticRuntimeInfo: RuntimeInfo = options.runtimeInfo ?? { runtimeMode: 'normal' };
+  const resolveRuntimeInfo = options.getRuntimeInfo ?? (() => staticRuntimeInfo);
   const staticDir = options.staticDir ?? resolveDefaultStaticDir();
   const originHashByRawRequest = new WeakMap<object, string>();
 
@@ -138,7 +157,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
   });
 
   app.get('/api/runtime', async () => {
-    return runtimeInfo;
+    return sanitizeRuntimeInfo(resolveRuntimeInfo());
   });
 
   app.get(
