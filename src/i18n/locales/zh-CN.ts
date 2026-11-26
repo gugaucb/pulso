@@ -49,7 +49,7 @@ export const zhCN: TranslationDictionary = {
     room_expired: '此房间已过期或已被房主关闭。',
     tor_video_blocked: 'Tor 模式下已禁用视频通话以保护您的匿名性。',
     rate_limited: '短时间内尝试次数过多，请稍等片刻后再试。',
-    payload_too_large: '消息大小超过了服务器允许的 64 KB 上限。',
+    payload_too_large: '临时消息超过了服务器允许的 64 KB 最大限制。',
     server_at_capacity: '服务器当前活跃房间数已达临时上限，请稍后再试。',
     transport_error: '无法连接到房间，请重试。',
     dismissError: '关闭提示',

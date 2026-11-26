@@ -1,14 +1,6 @@
 import { createServer } from './app';
+import { resolvePort } from './config';
 import { logOperationalNotice } from './security';
-
-const DEFAULT_PORT = 3001;
-
-function resolvePort(): number {
-  const raw = process.env.PORT;
-  if (!raw) return DEFAULT_PORT;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PORT;
-}
 
 async function main(): Promise<void> {
   const host = process.env.HOST ?? '0.0.0.0';

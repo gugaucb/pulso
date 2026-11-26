@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { sanitizeRuntimeInfo } from '../../shared/protocol';
 import { normalizeOnionAddress } from '../domain/onionAddress';
 import type { RuntimeInfo } from '../domain/types';
 
@@ -31,26 +32,6 @@ function resolveOnionOriginRuntime(options?: UseRuntimeInfoOptions): RuntimeInfo
   };
 }
 
-function parseRuntimeInfoPayload(raw: unknown): RuntimeInfo {
-  if (!raw || typeof raw !== 'object') {
-    return DEFAULT_RUNTIME_INFO;
-  }
-  const obj = raw as Record<string, unknown>;
-  const runtimeMode = obj.runtimeMode === 'tor' ? 'tor' : 'normal';
-  const next: RuntimeInfo = { runtimeMode };
-  if (typeof obj.onionAddress === 'string' && obj.onionAddress.length > 0) {
-    next.onionAddress = obj.onionAddress;
-  }
-  if (
-    obj.torStatus === 'bootstrapping' ||
-    obj.torStatus === 'ready' ||
-    obj.torStatus === 'error'
-  ) {
-    next.torStatus = obj.torStatus;
-  }
-  return next;
-}
-
 /**
  * Discovers live server runtime mode (`normal` vs `tor`) via GET /api/runtime,
  * polling briefly while Tor is bootstrapping, or returning immediately when overridden
@@ -80,7 +61,7 @@ export function useRuntimeInfo(
           signal: controller.signal,
         });
         if (!res.ok || cancelled) return;
-        const parsed = parseRuntimeInfoPayload(await res.json());
+        const parsed = sanitizeRuntimeInfo(await res.json());
         if (cancelled) return;
         setFetchedRuntime(parsed);
 

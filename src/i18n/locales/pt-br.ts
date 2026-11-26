@@ -49,7 +49,7 @@ export const ptBr: TranslationDictionary = {
     room_expired: 'Esta sala expirou ou foi encerrada pelo anfitrião.',
     tor_video_blocked: 'Chamadas de vídeo são bloqueadas no Modo Tor para proteger seu anonimato.',
     rate_limited: 'Muitas tentativas em sequência. Aguarde alguns instantes antes de tentar novamente.',
-    payload_too_large: 'A mensagem excedeu o limite máximo de 64 KB permitido pelo servidor.',
+    payload_too_large: 'A Mensagem Efêmera excedeu o limite máximo de 64 KB permitido pelo servidor.',
     server_at_capacity: 'O servidor atingiu o limite temporário de salas ativas. Tente novamente em instantes.',
     transport_error: 'Não foi possível conectar à sala. Tente novamente.',
     dismissError: 'Fechar aviso',

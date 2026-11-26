@@ -337,17 +337,29 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       });
     };
 
+    const syncParticipantsMap = (
+      list: Participant[],
+      primary?: Participant,
+      clearFirst = false,
+    ) => {
+      if (clearFirst) {
+        participantsRef.current.clear();
+      }
+      if (primary) {
+        participantsRef.current.set(primary.id, primary.displayName);
+      }
+      for (const p of list) {
+        participantsRef.current.set(p.id, p.displayName);
+      }
+    };
+
     const unsubscribe = transport.subscribe((event: TransportEvent) => {
       switch (event.type) {
         case 'room_joined': {
           pendingOutboundQueueRef.current = [];
           roomCodeRef.current = event.roomCode;
           localParticipantRef.current = event.participant;
-          participantsRef.current.clear();
-          participantsRef.current.set(event.participant.id, event.participant.displayName);
-          for (const p of event.participants) {
-            participantsRef.current.set(p.id, p.displayName);
-          }
+          syncParticipantsMap(event.participants, event.participant, true);
 
           const effectiveMode: RoomMode =
             event.mode === 'tor' || initialInviteModeRef.current === 'tor' ? 'tor' : 'normal';
@@ -392,10 +404,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           break;
         }
         case 'participant_joined': {
-          participantsRef.current.set(event.participant.id, event.participant.displayName);
-          for (const p of event.participants) {
-            participantsRef.current.set(p.id, p.displayName);
-          }
+          syncParticipantsMap(event.participants, event.participant);
           setParticipants(event.participants);
           setStatus('connected');
           peerPresentRef.current = true;
@@ -524,10 +533,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
         case 'reconnected': {
           roomCodeRef.current = event.roomCode;
           localParticipantRef.current = event.participant;
-          participantsRef.current.set(event.participant.id, event.participant.displayName);
-          for (const p of event.participants) {
-            participantsRef.current.set(p.id, p.displayName);
-          }
+          syncParticipantsMap(event.participants, event.participant);
           peerPresentRef.current = event.participants.length >= 2;
           setLocalParticipant(event.participant);
           setParticipants(event.participants);
@@ -540,9 +546,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           break;
         }
         case 'participant_reconnected': {
-          for (const p of event.participants) {
-            participantsRef.current.set(p.id, p.displayName);
-          }
+          syncParticipantsMap(event.participants);
           peerPresentRef.current = event.participants.length >= 2;
           setParticipants(event.participants);
           setStatus((prev) =>

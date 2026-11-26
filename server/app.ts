@@ -5,6 +5,7 @@ import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { LogController, type FastifyInstance } from 'fastify';
 import {
+  sanitizeRuntimeInfo,
   WS_PROTOCOL_VERSION,
   type ClientWsMessage,
   type IceServerConfig,
@@ -19,6 +20,7 @@ import {
 } from './security';
 
 const OPEN_READY_STATE = 1;
+const WS_HARD_MAX_PAYLOAD_MULTIPLIER = 4;
 
 export interface CreateServerOptions {
   clock?: Clock;
@@ -33,23 +35,7 @@ export interface CreateServerOptions {
   security?: SecurityManager;
   securityOptions?: SecurityOptions;
   iceServersProvider?: () => IceServerConfig[];
-}
-
-function sanitizeRuntimeInfo(info: RuntimeInfo): RuntimeInfo {
-  const sanitized: RuntimeInfo = {
-    runtimeMode: info.runtimeMode === 'tor' ? 'tor' : 'normal',
-  };
-  if (typeof info.onionAddress === 'string' && info.onionAddress.length > 0) {
-    sanitized.onionAddress = info.onionAddress;
-  }
-  if (
-    info.torStatus === 'bootstrapping' ||
-    info.torStatus === 'ready' ||
-    info.torStatus === 'error'
-  ) {
-    sanitized.torStatus = info.torStatus;
-  }
-  return sanitized;
+  onAllRoomsClosed?: () => void;
 }
 
 function resolveDefaultStaticDir(): string {
@@ -103,6 +89,23 @@ function getRawMessageByteLength(rawData: Buffer | ArrayBuffer | Buffer[] | stri
   return Buffer.byteLength(String(rawData), 'utf8');
 }
 
+function sendPayloadTooLargeAndClose(socket: {
+  readyState: number;
+  send: (data: string) => void;
+  close: (code?: number, reason?: string) => void;
+}): void {
+  if (socket.readyState === OPEN_READY_STATE) {
+    socket.send(
+      JSON.stringify({
+        type: 'room_error',
+        version: WS_PROTOCOL_VERSION,
+        code: 'payload_too_large',
+      }),
+    );
+    socket.close(1009, 'Payload too large');
+  }
+}
+
 /**
  * Creates a zero-trace Fastify instance serving HTTP static assets,
  * health/runtime endpoints, and the same-origin /ws WebSocket coordinator.
@@ -124,6 +127,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
     maxRooms: options.maxRooms,
     security,
     iceServersProvider: options.iceServersProvider,
+    onAllRoomsClosed: options.onAllRoomsClosed,
   });
   const staticRuntimeInfo: RuntimeInfo = options.runtimeInfo ?? { runtimeMode: 'normal' };
   const resolveRuntimeInfo = options.getRuntimeInfo ?? (() => staticRuntimeInfo);
@@ -143,12 +147,16 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
     errorHandler: (error, socket) => {
       const code = (error as { code?: string } | null)?.code;
       if (code === 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH') {
+        sendPayloadTooLargeAndClose(socket);
         return;
       }
       socket.terminate();
     },
     options: {
-      maxPayload: MAX_WS_PAYLOAD_BYTES,
+      // Allow a bounded headroom above maxWsPayloadBytes so oversized frames reach
+      // the message handler to emit `payload_too_large` before closing with 1009,
+      // while still aborting multi-megabyte frames in the ws receiver.
+      maxPayload: maxWsPayloadBytes * WS_HARD_MAX_PAYLOAD_MULTIPLIER,
     },
   });
 
@@ -191,12 +199,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
 
       socket.on('message', (rawData) => {
         if (getRawMessageByteLength(rawData) > maxWsPayloadBytes) {
-          session.send({
-            type: 'room_error',
-            version: WS_PROTOCOL_VERSION,
-            code: 'payload_too_large',
-          });
-          socket.close(1009, 'Payload too large');
+          sendPayloadTooLargeAndClose(socket);
           return;
         }
 

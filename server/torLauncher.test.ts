@@ -3,9 +3,22 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { WS_PROTOCOL_VERSION, type ServerWsMessage } from '../shared/protocol';
+import { ManualClock } from './clock';
 import type { TorControllerState } from './tor/torController';
 import { startTorServer, type TorControllerLike } from './torLauncher';
+
+function nextServerMessage(ws: {
+  once: (event: string, cb: (data: Buffer | string) => void) => void;
+}): Promise<ServerWsMessage> {
+  return new Promise((resolve) => {
+    ws.once('message', (data) => {
+      const text = typeof data === 'string' ? data : data.toString('utf8');
+      resolve(JSON.parse(text) as ServerWsMessage);
+    });
+  });
+}
 
 class ControlledTorController extends EventEmitter implements TorControllerLike {
   public startedWithPort?: number;
@@ -176,5 +189,136 @@ describe('server/torLauncher', () => {
     expect(controller.stopCalls).toBe(1);
     expect(existsSync(dataDir)).toBe(false);
     expect(errors.join('\n')).toContain('Bootstrap stalled');
+  });
+
+  it('keeps Tor running on Guest leave_room and stops TorController, purges tor_data, and closes Fastify on Host leave_room', async () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'pulso-tor-host-leave-'));
+    const dataDir = join(tempRoot, 'tor_data');
+    cleanups.push(() => rmSync(tempRoot, { recursive: true, force: true }));
+
+    let controller!: ControlledTorController;
+    const handle = await startTorServer({
+      port: 0,
+      dataDir,
+      waitForReady: false,
+      log: () => {},
+      createTorController: (opts) => {
+        controller = new ControlledTorController(opts.localPort, opts.dataDir ?? dataDir);
+        return controller;
+      },
+    });
+    cleanups.push(() => handle.stop());
+
+    const realOnion = `http://${'c'.repeat(56)}.onion`;
+    controller.finishReady(realOnion);
+    await handle.ready;
+
+    const hostWs = await handle.app.injectWS('/ws');
+    const guestWs = await handle.app.injectWS('/ws');
+    cleanups.push(() => {
+      if (hostWs.readyState === 1 || hostWs.readyState === 0) hostWs.close();
+      if (guestWs.readyState === 1 || guestWs.readyState === 0) guestWs.close();
+    });
+
+    const hostJoinedP = nextServerMessage(hostWs);
+    hostWs.send(
+      JSON.stringify({
+        type: 'create_room',
+        version: WS_PROTOCOL_VERSION,
+        roomCode: 'T7R2-M9K4',
+        displayName: 'Host',
+        mode: 'tor',
+        onionAddress: realOnion,
+      }),
+    );
+    expect((await hostJoinedP).type).toBe('room_joined');
+
+    const guestJoinedP = nextServerMessage(guestWs);
+    const hostPeerJoinedP = nextServerMessage(hostWs);
+    guestWs.send(
+      JSON.stringify({
+        type: 'join_room',
+        version: WS_PROTOCOL_VERSION,
+        roomCode: 'T7R2-M9K4',
+        displayName: 'Guest',
+      }),
+    );
+    expect((await guestJoinedP).type).toBe('room_joined');
+    expect((await hostPeerJoinedP).type).toBe('participant_joined');
+
+    // Guest leaves explicitly -> room stays open and Tor remains running
+    const hostPeerLeftP = nextServerMessage(hostWs);
+    guestWs.send(JSON.stringify({ type: 'leave_room', version: WS_PROTOCOL_VERSION }));
+    expect((await hostPeerLeftP).type).toBe('participant_left');
+    expect(controller.stopCalls).toBe(0);
+    expect(existsSync(dataDir)).toBe(true);
+    expect(handle.app.server.listening).toBe(true);
+
+    // Host leaves explicitly -> room closes, triggering Tor stop + tor_data purge + Fastify close
+    hostWs.send(JSON.stringify({ type: 'leave_room', version: WS_PROTOCOL_VERSION }));
+
+    await vi.waitFor(() => {
+      expect(controller.stopCalls).toBe(1);
+      expect(existsSync(dataDir)).toBe(false);
+      expect(handle.app.server.listening).toBe(false);
+    });
+  });
+
+  it('automatically stops TorController, purges tor_data, and closes Fastify when the Tor room expires by inactivity', async () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'pulso-tor-expiry-'));
+    const dataDir = join(tempRoot, 'tor_data');
+    cleanups.push(() => rmSync(tempRoot, { recursive: true, force: true }));
+
+    const clock = new ManualClock(1_700_000_000_000);
+    let controller!: ControlledTorController;
+    const handle = await startTorServer({
+      port: 0,
+      dataDir,
+      clock,
+      waitForReady: false,
+      log: () => {},
+      createTorController: (opts) => {
+        controller = new ControlledTorController(opts.localPort, opts.dataDir ?? dataDir);
+        return controller;
+      },
+    });
+    cleanups.push(() => handle.stop());
+
+    const realOnion = `http://${'d'.repeat(56)}.onion`;
+    controller.finishReady(realOnion);
+    await handle.ready;
+
+    const hostWs = await handle.app.injectWS('/ws');
+    cleanups.push(() => {
+      if (hostWs.readyState === 1 || hostWs.readyState === 0) hostWs.close();
+    });
+
+    const hostJoinedP = nextServerMessage(hostWs);
+    hostWs.send(
+      JSON.stringify({
+        type: 'create_room',
+        version: WS_PROTOCOL_VERSION,
+        roomCode: 'X9K2-P7M4',
+        displayName: 'Host',
+        mode: 'tor',
+        onionAddress: realOnion,
+      }),
+    );
+    expect((await hostJoinedP).type).toBe('room_joined');
+
+    const hostExpiredP = nextServerMessage(hostWs);
+    clock.advanceBy(60 * 60 * 1000);
+
+    expect(await hostExpiredP).toEqual({
+      type: 'room_expired',
+      version: WS_PROTOCOL_VERSION,
+      reason: 'inactivity',
+    });
+
+    await vi.waitFor(() => {
+      expect(controller.stopCalls).toBe(1);
+      expect(existsSync(dataDir)).toBe(false);
+      expect(handle.app.server.listening).toBe(false);
+    });
   });
 });
