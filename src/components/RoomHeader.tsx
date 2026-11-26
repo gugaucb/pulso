@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Globe, Link2, LogOut, Moon, MoreVertical, Sun } from 'lucide-react';
+import { Check, Copy, Globe, Link2, LogOut, Moon, MoreVertical, ShieldCheck, Sun } from 'lucide-react';
 import type { Participant } from '../domain/types';
 import { LOCALE_OPTIONS, useI18n } from '../i18n';
 import { useTheme } from '../theme/ThemeContext';
@@ -9,8 +9,10 @@ interface RoomHeaderProps {
   participants: Participant[];
   copiedCode: boolean;
   copiedLink: boolean;
+  e2eeReady: boolean;
   onCopyCode: () => void;
   onCopyLink: () => void;
+  onOpenSas: () => void;
   onLeaveRoom: () => void;
 }
 
@@ -19,8 +21,10 @@ export function RoomHeader({
   participants,
   copiedCode,
   copiedLink,
+  e2eeReady,
   onCopyCode,
   onCopyLink,
+  onOpenSas,
   onLeaveRoom,
 }: RoomHeaderProps) {
   const { locale, setLocale, t } = useI18n();
@@ -92,6 +96,28 @@ export function RoomHeader({
       <div className="flex items-center gap-2">
         <button
           type="button"
+          onClick={onOpenSas}
+          aria-label={t.e2ee.protectedBadge}
+          title={t.e2ee.verifyAction}
+          className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition cursor-pointer ${
+            e2eeReady
+              ? 'border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-500/10 hover:bg-emerald-100/80 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+              : 'border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-slate-50 dark:hover:bg-[#2B2F45] text-slate-600 dark:text-slate-300'
+          }`}
+        >
+          <ShieldCheck
+            className={`h-3.5 w-3.5 ${
+              e2eeReady
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-slate-400 dark:text-slate-400'
+            }`}
+            aria-hidden="true"
+          />
+          <span className="hidden md:inline">{t.e2ee.protectedBadge}</span>
+        </button>
+
+        <button
+          type="button"
           onClick={onCopyLink}
           className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-slate-50 dark:hover:bg-[#2B2F45] px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer"
         >
@@ -138,6 +164,19 @@ export function RoomHeader({
               aria-label={t.room.optionsMenu}
               className="absolute right-0 mt-2 w-60 rounded-2xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] shadow-xl py-2 z-30"
             >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onOpenSas();
+                }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-[#2B2F45] transition cursor-pointer text-left"
+              >
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                <span>{t.e2ee.verifyAction}</span>
+              </button>
+
               <button
                 type="button"
                 role="menuitem"

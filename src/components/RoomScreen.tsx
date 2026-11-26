@@ -5,6 +5,7 @@ import { MessageComposer } from './MessageComposer';
 import { MessageList } from './MessageList';
 import { RoomHeader } from './RoomHeader';
 import { RoomSidebar } from './RoomSidebar';
+import { SasVerificationModal } from './modals/SasVerificationModal';
 
 interface RoomScreenProps {
   roomCode: string;
@@ -13,6 +14,9 @@ interface RoomScreenProps {
   localParticipant: Participant;
   participants: Participant[];
   messages: EphemeralMessage[];
+  sasCode: string | null;
+  e2eeReady: boolean;
+  hasLinkSecret: boolean;
   onSendMessage: (text: string) => Promise<void>;
   onLeaveRoom: () => Promise<void>;
 }
@@ -24,11 +28,15 @@ export function RoomScreen({
   localParticipant,
   participants,
   messages,
+  sasCode,
+  e2eeReady,
+  hasLinkSecret,
   onSendMessage,
   onLeaveRoom,
 }: RoomScreenProps) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [sasModalOpen, setSasModalOpen] = useState(false);
   const codeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const linkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -61,8 +69,10 @@ export function RoomScreen({
         participants={participants}
         copiedCode={copiedCode}
         copiedLink={copiedLink}
+        e2eeReady={e2eeReady}
         onCopyCode={handleCopyCode}
         onCopyLink={handleCopyLink}
+        onOpenSas={() => setSasModalOpen(true)}
         onLeaveRoom={() => void onLeaveRoom()}
       />
 
@@ -72,8 +82,10 @@ export function RoomScreen({
           participants={participants}
           copiedCode={copiedCode}
           copiedLink={copiedLink}
+          e2eeReady={e2eeReady}
           onCopyCode={handleCopyCode}
           onCopyLink={handleCopyLink}
+          onOpenSas={() => setSasModalOpen(true)}
           onLeaveRoom={() => void onLeaveRoom()}
         />
 
@@ -90,6 +102,13 @@ export function RoomScreen({
 
         <MessageComposer onSendMessage={onSendMessage} />
       </div>
+
+      <SasVerificationModal
+        open={sasModalOpen}
+        sasCode={sasCode}
+        hasLinkSecret={hasLinkSecret}
+        onClose={() => setSasModalOpen(false)}
+      />
     </div>
   );
 }

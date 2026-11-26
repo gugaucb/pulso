@@ -98,6 +98,10 @@ export const es: TranslationDictionary = {
     sasTitle: 'Verificación mutua (SAS)',
     sasDescription: 'Compara este código visual con el otro participante para confirmar que no hay intermediarios.',
     sasCodeLabel: 'Código de verificación',
+    sasWaiting: 'Esperando a que el otro participante se conecte para generar el código SAS…',
+    sasMismatchWarning: 'Si los códigos no coinciden, sal de la sala inmediatamente: podría haber una interceptación.',
+    sasLinkSecretActive: 'Protección reforzada activa mediante el secreto #k del enlace.',
+    sasManualModeHint: 'Acceso solo con código de sala: confirma este código SAS con el otro participante.',
     close: 'Cerrar',
   },
   inactivity: {

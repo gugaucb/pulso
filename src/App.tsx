@@ -55,6 +55,9 @@ function AppContent({
           localParticipant={session.localParticipant}
           participants={session.participants}
           messages={session.messages}
+          sasCode={session.sasCode}
+          e2eeReady={session.e2eeReady}
+          hasLinkSecret={session.hasLinkSecret}
           onSendMessage={session.sendMessage}
           onLeaveRoom={session.leaveRoom}
         />
