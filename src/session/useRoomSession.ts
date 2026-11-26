@@ -127,16 +127,9 @@ interface PendingKeyExchange {
 }
 
 export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSessionState {
-  const ownsTransportRef = useRef(false);
   const transportRef = useRef<RoomTransport | null>(null);
   if (!transportRef.current) {
-    if (options.transport) {
-      transportRef.current = options.transport;
-      ownsTransportRef.current = false;
-    } else {
-      transportRef.current = new BroadcastChannelTransport();
-      ownsTransportRef.current = true;
-    }
+    transportRef.current = options.transport ?? new BroadcastChannelTransport();
   }
   const transport = transportRef.current;
 
@@ -505,11 +498,9 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       resetCryptoState();
       pendingOutboundQueueRef.current = [];
       secretKeyRef.current = undefined;
-      if (ownsTransportRef.current) {
-        transport.dispose();
-      } else {
-        void transport.leaveRoom();
-      }
+      roomCodeRef.current = null;
+      localParticipantRef.current = null;
+      void transport.leaveRoom();
     };
   }, [clearTypingTimers, resetCryptoState, transport, wipeVolatileState]);
 
@@ -573,6 +564,9 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     [options.defaultDisplayName, transport],
   );
 
+  const joinRoomRef = useRef(joinRoom);
+  joinRoomRef.current = joinRoom;
+
   useEffect(() => {
     if (autoJoinAttemptedRef.current) return;
     autoJoinAttemptedRef.current = true;
@@ -590,8 +584,12 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     initialOnionRef.current = parsed.onionAddress ?? null;
     setRoomMode(parsed.mode);
     setOnionAddress(parsed.onionAddress ?? null);
-    void joinRoom(parsed.roomCode);
-  }, [joinRoom, options.initialUrl]);
+    void joinRoomRef.current(parsed.roomCode);
+
+    return () => {
+      autoJoinAttemptedRef.current = false;
+    };
+  }, [options.initialUrl]);
 
   const setTyping = useCallback(
     (isTyping: boolean) => {

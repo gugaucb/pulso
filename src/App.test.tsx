@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
@@ -211,5 +212,54 @@ describe('PULSO App integration', () => {
 
     expect(window.location.search).toBe('');
     expect(window.location.hash).toBe('');
+  });
+
+  it('creates a room and auto-joins cleanly under React StrictMode with default BroadcastChannelTransport', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <StrictMode>
+        <App initialLocale="pt-br" />
+      </StrictMode>,
+    );
+
+    await user.click(screen.getByRole('button', { name: /criar nova sala/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/sua sala foi criada!/i)).toBeInTheDocument();
+    });
+
+    const createdCode = screen.getAllByText(ROOM_CODE_REGEX)[0].textContent!.trim();
+    expect(isValidRoomCode(createdCode)).toBe(true);
+  });
+
+  it('auto-joins via invite URL cleanly under React StrictMode', async () => {
+    const user = userEvent.setup();
+    const hub = new InMemoryTransportHub();
+
+    const hostView = render(<App transport={hub.createTransport()} initialLocale="pt-br" />);
+    const host = within(hostView.container);
+
+    await user.click(host.getByRole('button', { name: /criar nova sala/i }));
+    await waitFor(() => {
+      expect(host.getByText(/sua sala foi criada!/i)).toBeInTheDocument();
+    });
+
+    const createdCode = host.getAllByText(ROOM_CODE_REGEX)[0].textContent!.trim();
+    const guestView = render(
+      <StrictMode>
+        <App
+          transport={hub.createTransport()}
+          initialUrl={`https://pulso.example/?room=${createdCode}#k=secret256`}
+          initialLocale="pt-br"
+        />
+      </StrictMode>,
+    );
+    const guest = within(guestView.container);
+
+    await waitFor(() => {
+      expect(guest.getAllByText(/2 pessoas online/i).length).toBeGreaterThan(0);
+      expect(host.getAllByText(/2 pessoas online/i).length).toBeGreaterThan(0);
+    });
   });
 });
