@@ -6,3 +6,5 @@ test-results/
 .worktrees/
 .DS_Store
 *.local
+tor_data/
+.tor-bin/
