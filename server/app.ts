@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { LogController, type FastifyInstance } from 'fastify';
 import {
   WS_PROTOCOL_VERSION,
   type ClientWsMessage,
@@ -12,8 +12,12 @@ import {
 } from '../shared/protocol';
 import { systemClock, type Clock } from './clock';
 import { RoomStore, type ClientSession } from './roomStore';
+import {
+  MAX_WS_PAYLOAD_BYTES,
+  SecurityManager,
+  type SecurityOptions,
+} from './security';
 
-const MAX_WS_PAYLOAD_BYTES = 64 * 1024;
 const OPEN_READY_STATE = 1;
 
 export interface CreateServerOptions {
@@ -24,6 +28,10 @@ export interface CreateServerOptions {
   inactivityDurationMs?: number;
   hardTtlMs?: number;
   graceWindowMs?: number;
+  maxRooms?: number;
+  maxWsPayloadBytes?: number;
+  security?: SecurityManager;
+  securityOptions?: SecurityOptions;
   iceServersProvider?: () => IceServerConfig[];
 }
 
@@ -68,27 +76,77 @@ function isApiOrControlPath(pathname: string): boolean {
   );
 }
 
+function resolveOriginIp(request: {
+  ip?: string;
+  raw?: { socket?: { remoteAddress?: string } };
+}): string {
+  return request.ip || request.raw?.socket?.remoteAddress || 'unknown';
+}
+
+function getRawMessageByteLength(rawData: Buffer | ArrayBuffer | Buffer[] | string): number {
+  if (typeof rawData === 'string') {
+    return Buffer.byteLength(rawData, 'utf8');
+  }
+  if (Buffer.isBuffer(rawData)) {
+    return rawData.byteLength;
+  }
+  if (Array.isArray(rawData)) {
+    let total = 0;
+    for (const chunk of rawData) {
+      total += chunk.byteLength;
+    }
+    return total;
+  }
+  if (rawData instanceof ArrayBuffer) {
+    return rawData.byteLength;
+  }
+  return Buffer.byteLength(String(rawData), 'utf8');
+}
+
 /**
  * Creates a zero-trace Fastify instance serving HTTP static assets,
  * health/runtime endpoints, and the same-origin /ws WebSocket coordinator.
  */
 export async function createServer(options: CreateServerOptions = {}): Promise<FastifyInstance> {
   const clock = options.clock ?? systemClock;
+  const security = options.security ?? new SecurityManager(clock, options.securityOptions);
+  const maxWsPayloadBytes =
+    typeof options.maxWsPayloadBytes === 'number' &&
+    Number.isFinite(options.maxWsPayloadBytes) &&
+    options.maxWsPayloadBytes > 0
+      ? Math.floor(options.maxWsPayloadBytes)
+      : MAX_WS_PAYLOAD_BYTES;
+
   const roomStore = new RoomStore(clock, {
     inactivityDurationMs: options.inactivityDurationMs,
     hardTtlMs: options.hardTtlMs,
     graceWindowMs: options.graceWindowMs,
+    maxRooms: options.maxRooms,
+    security,
     iceServersProvider: options.iceServersProvider,
   });
   const staticRuntimeInfo: RuntimeInfo = options.runtimeInfo ?? { runtimeMode: 'normal' };
   const resolveRuntimeInfo = options.getRuntimeInfo ?? (() => staticRuntimeInfo);
   const staticDir = options.staticDir ?? resolveDefaultStaticDir();
+  const originHashByRawRequest = new WeakMap<object, string>();
 
   const app = Fastify({
     logger: false,
+    logController: new LogController({ disableRequestLogging: true }),
+  });
+
+  app.setErrorHandler((_error, _request, reply) => {
+    return reply.code(500).send({ error: 'Internal Server Error' });
   });
 
   await app.register(fastifyWebsocket, {
+    errorHandler: (error, socket) => {
+      const code = (error as { code?: string } | null)?.code;
+      if (code === 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH') {
+        return;
+      }
+      socket.terminate();
+    },
     options: {
       maxPayload: MAX_WS_PAYLOAD_BYTES,
     },
@@ -102,41 +160,69 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
     return sanitizeRuntimeInfo(resolveRuntimeInfo());
   });
 
-  app.get('/ws', { websocket: true }, (socket) => {
-    const session: ClientSession = {
-      send(message) {
-        if (socket.readyState === OPEN_READY_STATE) {
-          socket.send(JSON.stringify(message));
+  app.get(
+    '/ws',
+    {
+      websocket: true,
+      preHandler: async (request, reply) => {
+        const originHash = security.hashOrigin(resolveOriginIp(request));
+        if (!security.allowWsConnect(originHash)) {
+          return reply.code(429).send({ error: 'Too Many Requests' });
         }
+        originHashByRawRequest.set(request.raw, originHash);
       },
-      close() {
-        socket.close();
-      },
-    };
+    },
+    (socket, request) => {
+      const originHash =
+        originHashByRawRequest.get(request.raw) ?? security.hashOrigin(resolveOriginIp(request));
+      originHashByRawRequest.delete(request.raw);
 
-    socket.on('message', (rawData) => {
-      try {
-        const text = typeof rawData === 'string' ? rawData : rawData.toString('utf8');
-        const parsed = JSON.parse(text) as ClientWsMessage;
-        roomStore.handleMessage(session, parsed);
-      } catch {
-        session.send({
-          type: 'room_error',
-          version: WS_PROTOCOL_VERSION,
-          code: 'transport_error',
-          message: 'Invalid WebSocket message',
-        });
-      }
-    });
+      const session: ClientSession = {
+        originHash,
+        send(message) {
+          if (socket.readyState === OPEN_READY_STATE) {
+            socket.send(JSON.stringify(message));
+          }
+        },
+        close() {
+          socket.close();
+        },
+      };
 
-    socket.on('close', () => {
-      roomStore.handleDisconnect(session);
-    });
+      socket.on('message', (rawData) => {
+        if (getRawMessageByteLength(rawData) > maxWsPayloadBytes) {
+          session.send({
+            type: 'room_error',
+            version: WS_PROTOCOL_VERSION,
+            code: 'payload_too_large',
+          });
+          socket.close(1009, 'Payload too large');
+          return;
+        }
 
-    socket.on('error', () => {
-      roomStore.handleDisconnect(session);
-    });
-  });
+        try {
+          const text = typeof rawData === 'string' ? rawData : rawData.toString('utf8');
+          const parsed = JSON.parse(text) as ClientWsMessage;
+          roomStore.handleMessage(session, parsed);
+        } catch {
+          session.send({
+            type: 'room_error',
+            version: WS_PROTOCOL_VERSION,
+            code: 'transport_error',
+            message: 'Invalid WebSocket message',
+          });
+        }
+      });
+
+      socket.on('close', () => {
+        roomStore.handleDisconnect(session);
+      });
+
+      socket.on('error', () => {
+        roomStore.handleDisconnect(session);
+      });
+    },
+  );
 
   const hasStaticDir = existsSync(staticDir);
   const hasIndexHtml = hasStaticDir && existsSync(resolve(staticDir, 'index.html'));

@@ -46,6 +46,9 @@ describe('i18n core utilities', () => {
       expect(dict.room.expiredReasonHardTtl.length).toBeGreaterThan(0);
       expect(dict.room.expiredReasonHostLeft.length).toBeGreaterThan(0);
       expect(dict.room.expiredReasonGraceTimeout.length).toBeGreaterThan(0);
+      expect(dict.errors.rate_limited.length).toBeGreaterThan(0);
+      expect(dict.errors.payload_too_large.length).toBeGreaterThan(0);
+      expect(dict.errors.server_at_capacity.length).toBeGreaterThan(0);
       expect(dict.messages.typingIndicator('Ana').length).toBeGreaterThan(0);
     }
   });

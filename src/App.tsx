@@ -121,6 +121,8 @@ function AppContent({
           onionAddress={session.onionAddress}
           inviteUrl={session.inviteUrl ?? session.roomCode}
           connectionStatus={session.status}
+          roomErrorCode={session.errorCode}
+          onDismissRoomError={session.clearError}
           isHost={session.isHost}
           localParticipant={session.localParticipant}
           participants={participantsWithVideo}

@@ -33,6 +33,9 @@ export type RoomErrorCode =
   | 'room_full'
   | 'room_expired'
   | 'tor_video_blocked'
+  | 'rate_limited'
+  | 'payload_too_large'
+  | 'server_at_capacity'
   | 'transport_error';
 
 export interface CallSignal {

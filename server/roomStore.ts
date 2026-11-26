@@ -13,6 +13,7 @@ import {
 import { formatRoomCode, isValidRoomCode } from '../shared/roomCode';
 import { systemClock, type Clock, type TimerHandle } from './clock';
 import { buildIceServers } from './iceConfig';
+import { DEFAULT_MAX_ROOMS, type SecurityManager } from './security';
 
 export const DEFAULT_INACTIVITY_MS = 60 * 60 * 1000;
 export const DEFAULT_HARD_TTL_MS = 24 * 60 * 60 * 1000;
@@ -24,12 +25,15 @@ export interface RoomStoreOptions {
   inactivityDurationMs?: number;
   hardTtlMs?: number;
   graceWindowMs?: number;
+  maxRooms?: number;
+  security?: SecurityManager;
   iceServersProvider?: () => IceServerConfig[];
 }
 
 export interface ClientSession {
   send(message: ServerWsMessage): void;
   close?: () => void;
+  originHash?: string;
 }
 
 interface RoomMember {
@@ -102,6 +106,8 @@ export class RoomStore {
   private readonly defaultInactivityMs: number;
   private readonly hardTtlMs: number;
   private readonly graceWindowMs: number;
+  private readonly maxRooms: number;
+  private readonly security?: SecurityManager;
   private readonly iceServersProvider: () => IceServerConfig[];
   private readonly rooms = new Map<string, RoomRecord>();
   private readonly memberships = new Map<ClientSession, Membership>();
@@ -129,6 +135,11 @@ export class RoomStore {
       resolvedOptions.graceWindowMs,
       resolveEnvPositiveMs('PULSO_GRACE_WINDOW_MS', DEFAULT_GRACE_WINDOW_MS),
     );
+    this.maxRooms = resolveOptionMs(
+      resolvedOptions.maxRooms,
+      resolveEnvPositiveMs('PULSO_MAX_ROOMS', DEFAULT_MAX_ROOMS),
+    );
+    this.security = resolvedOptions.security;
     this.iceServersProvider =
       resolvedOptions.iceServersProvider ?? (() => buildIceServers(process.env));
   }
@@ -220,6 +231,11 @@ export class RoomStore {
     client: ClientSession,
     msg: Extract<ClientWsMessage, { type: 'create_room' }>,
   ): void {
+    if (this.security && client.originHash && !this.security.allowCreateRoom(client.originHash)) {
+      this.sendError(client, 'rate_limited');
+      return;
+    }
+
     if (!isValidRoomCode(msg.roomCode)) {
       this.sendError(client, 'invalid_code');
       return;
@@ -236,6 +252,14 @@ export class RoomStore {
     }
 
     this.handleExplicitLeave(client);
+
+    if (this.rooms.size >= this.maxRooms) {
+      this.pruneExpiredRooms();
+      if (this.rooms.size >= this.maxRooms) {
+        this.sendError(client, 'server_at_capacity');
+        return;
+      }
+    }
 
     const mode: RoomMode = msg.mode === 'tor' ? 'tor' : 'normal';
     const durationMs = resolveOptionMs(msg.inactivityDurationMs, this.defaultInactivityMs);
@@ -289,7 +313,13 @@ export class RoomStore {
     client: ClientSession,
     msg: Extract<ClientWsMessage, { type: 'join_room' }>,
   ): void {
+    if (this.isJoinRateLimited(client)) {
+      this.sendError(client, 'rate_limited');
+      return;
+    }
+
     if (!isValidRoomCode(msg.roomCode)) {
+      this.recordFailedJoin(client);
       this.sendError(client, 'invalid_code');
       return;
     }
@@ -297,11 +327,13 @@ export class RoomStore {
     const code = formatRoomCode(msg.roomCode);
     const room = this.rooms.get(code);
     if (!room) {
+      this.recordFailedJoin(client);
       this.sendError(client, 'room_not_found');
       return;
     }
 
     if (this.clock.now() >= room.expiresAt) {
+      this.recordFailedJoin(client);
       this.purgeRoom(room, this.resolveExpiryReason(room));
       this.sendError(client, 'room_expired');
       return;
@@ -366,7 +398,13 @@ export class RoomStore {
     client: ClientSession,
     msg: Extract<ClientWsMessage, { type: 'reconnect_room' }>,
   ): void {
+    if (this.isJoinRateLimited(client)) {
+      this.sendError(client, 'rate_limited');
+      return;
+    }
+
     if (!isValidRoomCode(msg.roomCode)) {
+      this.recordFailedJoin(client);
       this.sendError(client, 'invalid_code');
       return;
     }
@@ -374,17 +412,20 @@ export class RoomStore {
     const code = formatRoomCode(msg.roomCode);
     const room = this.rooms.get(code);
     if (!room) {
+      this.recordFailedJoin(client);
       this.sendError(client, 'room_not_found');
       return;
     }
 
     if (this.clock.now() >= room.expiresAt) {
+      this.recordFailedJoin(client);
       this.purgeRoom(room, this.resolveExpiryReason(room));
       this.sendError(client, 'room_expired');
       return;
     }
 
     if (typeof msg.sessionToken !== 'string' || !msg.sessionToken) {
+      this.recordFailedJoin(client);
       this.sendError(client, 'room_not_found');
       return;
     }
@@ -401,6 +442,7 @@ export class RoomStore {
     }
 
     if (!role || !member) {
+      this.recordFailedJoin(client);
       this.sendError(client, 'room_not_found');
       return;
     }
@@ -540,6 +582,15 @@ export class RoomStore {
     return this.clock.now() >= room.hardExpiresAt ? 'hard_ttl' : 'inactivity';
   }
 
+  private pruneExpiredRooms(): void {
+    const now = this.clock.now();
+    for (const room of this.rooms.values()) {
+      if (now >= room.expiresAt) {
+        this.purgeRoom(room, this.resolveExpiryReason(room));
+      }
+    }
+  }
+
   private clearGraceTimer(member: RoomMember): void {
     if (member.graceTimer !== null) {
       this.clock.clearTimeout(member.graceTimer);
@@ -648,6 +699,16 @@ export class RoomStore {
         session.close?.();
       }
     }
+  }
+
+  private isJoinRateLimited(client: ClientSession): boolean {
+    if (!this.security || !client.originHash) return false;
+    return this.security.isFailedJoinRateLimited(client.originHash);
+  }
+
+  private recordFailedJoin(client: ClientSession): void {
+    if (!this.security || !client.originHash) return;
+    this.security.recordFailedJoin(client.originHash);
   }
 
   private sendError(

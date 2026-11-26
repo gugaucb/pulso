@@ -43,6 +43,7 @@ export interface TranslationDictionary {
     torStatusError: string;
   };
   errors: Record<RoomErrorCode, string> & {
+    dismissError: string;
     mediaPermissionDenied: string;
     mediaUnavailable: string;
     mediaConnectionFailed: string;

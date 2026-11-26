@@ -560,6 +560,15 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           break;
         }
         case 'room_error': {
+          const isNonFatalInRoom =
+            Boolean(roomCodeRef.current && localParticipantRef.current) &&
+            (event.code === 'rate_limited' ||
+              event.code === 'payload_too_large' ||
+              event.code === 'server_at_capacity');
+          if (isNonFatalInRoom) {
+            setErrorCode(event.code);
+            break;
+          }
           clearBrowserRoomUrl();
           wipeVolatileState('error', event.code, null);
           break;
