@@ -1,4 +1,4 @@
-import { Check, Clock, Copy, Globe, Link2, LogOut, Moon, ShieldCheck, Sun } from 'lucide-react';
+import { Check, Clock, Copy, Globe, Link2, LogOut, Moon, ShieldCheck, Sun, Video } from 'lucide-react';
 import type { Locale, Participant } from '../domain/types';
 import { DEFAULT_GUEST_NAMES, LOCALE_OPTIONS, useI18n } from '../i18n';
 import { useTheme } from '../theme/ThemeContext';
@@ -93,15 +93,27 @@ export function RoomSidebar({
               return (
                 <li
                   key={participant.id}
-                  className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-slate-100"
+                  className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-100"
                 >
-                  <span
-                    className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white ${avatarBg}`}
-                    aria-hidden="true"
-                  >
-                    {getInitials(participant.displayName)}
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white ${avatarBg}`}
+                      aria-hidden="true"
+                    >
+                      {getInitials(participant.displayName)}
+                    </span>
+                    <span className="truncate font-medium">{label}</span>
                   </span>
-                  <span className="truncate font-medium">{label}</span>
+                  {participant.videoEnabled && (
+                    <span
+                      role="img"
+                      aria-label={t.videoCall.participantVideoActive}
+                      title={t.videoCall.participantVideoActive}
+                      className="inline-flex shrink-0 items-center justify-center rounded-md bg-indigo-500/20 p-1 text-indigo-300"
+                    >
+                      <Video className="h-3.5 w-3.5" aria-hidden="true" />
+                    </span>
+                  )}
                 </li>
               );
             })}

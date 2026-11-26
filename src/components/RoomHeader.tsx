@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Globe, Link2, LogOut, Moon, MoreVertical, ShieldCheck, Sun } from 'lucide-react';
+import { Check, Copy, Globe, Link2, LogOut, Moon, MoreVertical, ShieldCheck, Sun, Video } from 'lucide-react';
 import type { Participant } from '../domain/types';
 import { LOCALE_OPTIONS, useI18n } from '../i18n';
 import { useTheme } from '../theme/ThemeContext';
@@ -9,6 +9,8 @@ interface RoomHeaderProps {
   participants: Participant[];
   copiedCode: boolean;
   copiedLink: boolean;
+  isCallActive?: boolean;
+  onStartVideoCall?: () => void;
   e2eeReady: boolean;
   onCopyCode: () => void;
   onCopyLink: () => void;
@@ -21,6 +23,8 @@ export function RoomHeader({
   participants,
   copiedCode,
   copiedLink,
+  isCallActive = false,
+  onStartVideoCall,
   e2eeReady,
   onCopyCode,
   onCopyLink,
@@ -94,6 +98,27 @@ export function RoomHeader({
       </div>
 
       <div className="flex items-center gap-2">
+        {onStartVideoCall && (
+          <button
+            type="button"
+            onClick={() => {
+              if (!isCallActive) {
+                onStartVideoCall();
+              }
+            }}
+            aria-label={t.videoCall.startCall}
+            aria-pressed={isCallActive}
+            title={t.videoCall.startCall}
+            className={`inline-flex items-center justify-center rounded-xl border p-2 transition cursor-pointer ${
+              isCallActive
+                ? 'border-[#5B3DF5] bg-[#5B3DF5] text-white shadow-sm'
+                : 'border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-slate-50 dark:hover:bg-[#2B2F45] text-[#5B3DF5] dark:text-[#818CF8]'
+            }`}
+          >
+            <Video className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onOpenSas}

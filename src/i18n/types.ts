@@ -38,6 +38,8 @@ export interface TranslationDictionary {
   errors: Record<RoomErrorCode, string> & {
     mediaPermissionDenied: string;
     mediaUnavailable: string;
+    mediaConnectionFailed: string;
+    screenShareDenied: string;
   };
   room: {
     sidebarAriaLabel: string;
@@ -111,7 +113,12 @@ export interface TranslationDictionary {
     previewTitle: string;
     previewConfirm: string;
     previewCancel: string;
+    cameraSelectLabel: string;
+    microphoneSelectLabel: string;
+    audioLevelLabel: string;
     youWithCameraOn: string;
+    youWithCameraOff: string;
+    screenSharingBadge: string;
     muteMic: string;
     unmuteMic: string;
     disableCamera: string;
@@ -119,9 +126,17 @@ export interface TranslationDictionary {
     shareScreen: string;
     stopScreenShare: string;
     endCall: string;
+    switchLayout: string;
     layoutHybrid: string;
     layoutPip: string;
     layoutFocus: string;
+    showMessages: string;
+    hideMessages: string;
+    participantVideoActive: string;
+    waitingRemoteVideo: string;
+    remoteCameraOffLabel: string;
+    remoteMutedBadge: string;
+    dismissNotice: string;
     peerMuted: (name: string) => string;
     peerCameraOff: (name: string) => string;
     peerLeftCall: (name: string) => string;
