@@ -445,6 +445,49 @@ describe('Fastify /ws security integration (rate limits, capacity, 64 KB limit, 
     expect(closeCode).toBe(1009);
   });
 
+  it('emits payload_too_large room_error over /ws when a frame exceeds default 64 KB maxWsPayloadBytes', async () => {
+    const app = await createServer({
+      clock: new ManualClock(1_700_000_000_000),
+    });
+    await app.ready();
+    cleanups.push(() => app.close());
+
+    const client = await app.injectWS('/ws');
+    cleanups.push(() => {
+      if (client.readyState === 1 || client.readyState === 0) {
+        client.close();
+      }
+    });
+
+    const oversizedBase = {
+      type: 'create_room',
+      version: WS_PROTOCOL_VERSION,
+      roomCode: 'A7K9-M2P4',
+      displayName: 'Host',
+      mode: 'normal',
+      padding: '',
+    };
+    const baseLen = Buffer.byteLength(JSON.stringify(oversizedBase), 'utf8');
+    oversizedBase.padding = 'x'.repeat(MAX_WS_PAYLOAD_BYTES + 1 - baseLen);
+    const oversizedFrame = JSON.stringify(oversizedBase);
+    expect(Buffer.byteLength(oversizedFrame, 'utf8')).toBe(MAX_WS_PAYLOAD_BYTES + 1);
+
+    const errPromise = nextServerMessage(client);
+    const closeCodePromise = new Promise<number>((resolve) => {
+      client.once('close', (code) => resolve(code));
+    });
+
+    client.send(oversizedFrame);
+
+    const errMsg = await errPromise;
+    expect(errMsg).toEqual({
+      type: 'room_error',
+      version: WS_PROTOCOL_VERSION,
+      code: 'payload_too_large',
+    });
+    expect(await closeCodePromise).toBe(1009);
+  });
+
   it('emits payload_too_large room_error and closes cleanly when raw message byte-length exceeds configured maxWsPayloadBytes', async () => {
     const app = await createServer({
       clock: new ManualClock(1_700_000_000_000),

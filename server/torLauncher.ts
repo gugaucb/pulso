@@ -6,13 +6,13 @@ import type { FastifyInstance } from 'fastify';
 import type { RuntimeInfo } from '../shared/protocol';
 import { createServer } from './app';
 import type { Clock } from './clock';
+import { resolvePort } from './config';
 import {
   TorController,
   type TorControllerOptions,
   type TorControllerState,
 } from './tor/torController';
 
-const DEFAULT_PORT = 3001;
 const LOOPBACK_HOST = '127.0.0.1';
 
 export interface TorControllerLike {
@@ -32,6 +32,7 @@ export interface StartTorServerOptions {
   clock?: Clock;
   waitForReady?: boolean;
   registerSignals?: boolean;
+  autoStopOnRoomClose?: boolean;
   log?: (message: string) => void;
   errorLog?: (message: string) => void;
   createTorController?: (options: TorControllerOptions) => TorControllerLike;
@@ -45,13 +46,6 @@ export interface TorServerHandle {
   getRuntimeInfo: () => RuntimeInfo;
   ready: Promise<string>;
   stop: () => Promise<void>;
-}
-
-function resolvePort(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = env.PORT;
-  if (!raw) return DEFAULT_PORT;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PORT;
 }
 
 /**
@@ -72,11 +66,18 @@ export async function startTorServer(options: StartTorServerOptions = {}): Promi
   };
 
   const getRuntimeInfo = (): RuntimeInfo => ({ ...runtimeInfo });
+  let stopFn: (() => Promise<void>) | undefined;
 
   const app = await createServer({
     clock: options.clock,
     staticDir: options.staticDir,
     getRuntimeInfo,
+    onAllRoomsClosed:
+      options.autoStopOnRoomClose === false
+        ? undefined
+        : () => {
+            void stopFn?.();
+          },
   });
 
   await app.listen({ host: LOOPBACK_HOST, port: requestedPort });
@@ -98,17 +99,21 @@ export async function startTorServer(options: StartTorServerOptions = {}): Promi
   });
 
   let readyLogged = false;
+  const markTorReady = (onionAddress: string) => {
+    runtimeInfo = {
+      runtimeMode: 'tor',
+      torStatus: 'ready',
+      onionAddress,
+    };
+    if (!readyLogged) {
+      readyLogged = true;
+      log(`Tor status: ready (${onionAddress})`);
+    }
+  };
+
   const onStatus = (state: TorControllerState) => {
     if (state.status === 'ready' && state.onionAddress) {
-      runtimeInfo = {
-        runtimeMode: 'tor',
-        torStatus: 'ready',
-        onionAddress: state.onionAddress,
-      };
-      if (!readyLogged) {
-        readyLogged = true;
-        log(`Tor status: ready (${state.onionAddress})`);
-      }
+      markTorReady(state.onionAddress);
       return;
     }
     if (state.status === 'error') {
@@ -151,6 +156,7 @@ export async function startTorServer(options: StartTorServerOptions = {}): Promi
     })();
     return stopPromise;
   };
+  stopFn = stop;
 
   if (options.registerSignals) {
     signalHandler = () => {
@@ -166,15 +172,7 @@ export async function startTorServer(options: StartTorServerOptions = {}): Promi
     .start()
     .then((onionAddress) => {
       if (runtimeInfo.torStatus !== 'ready' || !runtimeInfo.onionAddress) {
-        runtimeInfo = {
-          runtimeMode: 'tor',
-          torStatus: 'ready',
-          onionAddress,
-        };
-        if (!readyLogged) {
-          readyLogged = true;
-          log(`Tor status: ready (${onionAddress})`);
-        }
+        markTorReady(onionAddress);
       }
       return onionAddress;
     })

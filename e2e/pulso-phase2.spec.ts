@@ -24,7 +24,7 @@ async function readSasCode(page: import('@playwright/test').Page): Promise<strin
 }
 
 test.describe('PULSO Phase 2 Full-Stack Multi-Browser E2E Suite', () => {
-  test('Normal Mode: 1:1 E2EE across isolated contexts, WS frame audit, matching SAS, and 3rd-entrant room_full rejection', async ({
+  test('Normal Mode: 1:1 E2EE across isolated contexts, WS frame audit, matching SAS, and third guest room_full rejection', async ({
     browser,
   }) => {
     const server = await spawnProductionServer();
@@ -102,7 +102,7 @@ test.describe('PULSO Phase 2 Full-Stack Multi-Browser E2E Suite', () => {
     });
   });
 
-  test('recovers silently within 30s grace window preserving E2EE keys and volatile history', async ({
+  test('recovers silently within 30s grace window preserving E2EE keys and ephemeral messages', async ({
     browser,
   }) => {
     const server = await spawnProductionServer();

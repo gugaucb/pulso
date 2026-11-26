@@ -28,6 +28,7 @@ export interface RoomStoreOptions {
   maxRooms?: number;
   security?: SecurityManager;
   iceServersProvider?: () => IceServerConfig[];
+  onAllRoomsClosed?: () => void;
 }
 
 export interface ClientSession {
@@ -109,6 +110,7 @@ export class RoomStore {
   private readonly maxRooms: number;
   private readonly security?: SecurityManager;
   private readonly iceServersProvider: () => IceServerConfig[];
+  private readonly onAllRoomsClosed?: () => void;
   private readonly rooms = new Map<string, RoomRecord>();
   private readonly memberships = new Map<ClientSession, Membership>();
 
@@ -142,6 +144,7 @@ export class RoomStore {
     this.security = resolvedOptions.security;
     this.iceServersProvider =
       resolvedOptions.iceServersProvider ?? (() => buildIceServers(process.env));
+    this.onAllRoomsClosed = resolvedOptions.onAllRoomsClosed;
   }
 
   handleMessage(client: ClientSession, message: ClientWsMessage): void {
@@ -295,49 +298,77 @@ export class RoomStore {
     });
     this.scheduleRoomExpiry(room);
 
-    client.send({
-      type: 'room_joined',
-      version: WS_PROTOCOL_VERSION,
-      roomCode: code,
+    this.emitRoomJoinedOrReconnected(
+      client,
+      'room_joined',
+      room,
       participant,
-      participants: [participant],
-      mode,
-      onionAddress: room.onionAddress,
-      expiresAt,
+      [participant],
       sessionToken,
-      ...(mode === 'normal' ? { iceServers: this.iceServersProvider() } : {}),
-    });
+    );
   }
 
-  private joinRoom(
-    client: ClientSession,
-    msg: Extract<ClientWsMessage, { type: 'join_room' }>,
-  ): void {
+  private resolveExistingRoom(client: ClientSession, rawCode: string): RoomRecord | null {
     if (this.isJoinRateLimited(client)) {
       this.sendError(client, 'rate_limited');
-      return;
+      return null;
     }
 
-    if (!isValidRoomCode(msg.roomCode)) {
+    if (!isValidRoomCode(rawCode)) {
       this.recordFailedJoin(client);
       this.sendError(client, 'invalid_code');
-      return;
+      return null;
     }
 
-    const code = formatRoomCode(msg.roomCode);
+    const code = formatRoomCode(rawCode);
     const room = this.rooms.get(code);
     if (!room) {
       this.recordFailedJoin(client);
       this.sendError(client, 'room_not_found');
-      return;
+      return null;
     }
 
     if (this.clock.now() >= room.expiresAt) {
       this.recordFailedJoin(client);
       this.purgeRoom(room, this.resolveExpiryReason(room));
       this.sendError(client, 'room_expired');
+      return null;
+    }
+
+    return room;
+  }
+
+  private emitRoomJoinedOrReconnected(
+    client: ClientSession,
+    type: 'room_joined' | 'reconnected',
+    room: RoomRecord,
+    participant: Participant,
+    participants: Participant[],
+    sessionToken?: string,
+  ): void {
+    const payload = {
+      version: WS_PROTOCOL_VERSION,
+      roomCode: room.roomCode,
+      participant,
+      participants,
+      mode: room.mode,
+      onionAddress: room.onionAddress,
+      expiresAt: room.expiresAt,
+      ...(room.mode === 'normal' ? { iceServers: this.iceServersProvider() } : {}),
+    };
+    if (type === 'room_joined') {
+      client.send({ type: 'room_joined', ...payload, sessionToken });
       return;
     }
+    client.send({ type: 'reconnected', ...payload });
+  }
+
+  private joinRoom(
+    client: ClientSession,
+    msg: Extract<ClientWsMessage, { type: 'join_room' }>,
+  ): void {
+    const room = this.resolveExistingRoom(client, msg.roomCode);
+    if (!room) return;
 
     if (room.guest !== null) {
       // Strict 1:1 limit: reject without exposing room state or notifying participants
@@ -360,25 +391,20 @@ export class RoomStore {
     this.scheduleRoomExpiry(room);
 
     this.memberships.set(client, {
-      roomCode: code,
+      roomCode: room.roomCode,
       participantId: guestParticipant.id,
       role: 'guest',
     });
 
     const participants = buildParticipantsList(room);
-
-    client.send({
-      type: 'room_joined',
-      version: WS_PROTOCOL_VERSION,
-      roomCode: code,
-      participant: guestParticipant,
+    this.emitRoomJoinedOrReconnected(
+      client,
+      'room_joined',
+      room,
+      guestParticipant,
       participants,
-      mode: room.mode,
-      onionAddress: room.onionAddress,
-      expiresAt: room.expiresAt,
       sessionToken,
-      ...(room.mode === 'normal' ? { iceServers: this.iceServersProvider() } : {}),
-    });
+    );
 
     room.host.session?.send({
       type: 'participant_joined',
@@ -398,31 +424,8 @@ export class RoomStore {
     client: ClientSession,
     msg: Extract<ClientWsMessage, { type: 'reconnect_room' }>,
   ): void {
-    if (this.isJoinRateLimited(client)) {
-      this.sendError(client, 'rate_limited');
-      return;
-    }
-
-    if (!isValidRoomCode(msg.roomCode)) {
-      this.recordFailedJoin(client);
-      this.sendError(client, 'invalid_code');
-      return;
-    }
-
-    const code = formatRoomCode(msg.roomCode);
-    const room = this.rooms.get(code);
-    if (!room) {
-      this.recordFailedJoin(client);
-      this.sendError(client, 'room_not_found');
-      return;
-    }
-
-    if (this.clock.now() >= room.expiresAt) {
-      this.recordFailedJoin(client);
-      this.purgeRoom(room, this.resolveExpiryReason(room));
-      this.sendError(client, 'room_expired');
-      return;
-    }
+    const room = this.resolveExistingRoom(client, msg.roomCode);
+    if (!room) return;
 
     if (typeof msg.sessionToken !== 'string' || !msg.sessionToken) {
       this.recordFailedJoin(client);
@@ -458,23 +461,13 @@ export class RoomStore {
     member.participant.online = true;
 
     this.memberships.set(client, {
-      roomCode: code,
+      roomCode: room.roomCode,
       participantId: member.participant.id,
       role,
     });
 
     const participants = buildParticipantsList(room);
-    client.send({
-      type: 'reconnected',
-      version: WS_PROTOCOL_VERSION,
-      roomCode: code,
-      participant: member.participant,
-      participants,
-      mode: room.mode,
-      onionAddress: room.onionAddress,
-      expiresAt: room.expiresAt,
-      ...(room.mode === 'normal' ? { iceServers: this.iceServersProvider() } : {}),
-    });
+    this.emitRoomJoinedOrReconnected(client, 'reconnected', room, member.participant, participants);
 
     const peer = role === 'host' ? room.guest : room.host;
     peer?.session?.send({
@@ -683,7 +676,7 @@ export class RoomStore {
       this.clearGraceTimer(room.guest);
     }
 
-    this.rooms.delete(room.roomCode);
+    const deleted = this.rooms.delete(room.roomCode);
 
     const members = room.guest ? [room.host, room.guest] : [room.host];
     for (const member of members) {
@@ -698,6 +691,10 @@ export class RoomStore {
         });
         session.close?.();
       }
+    }
+
+    if (deleted && reason && this.rooms.size === 0) {
+      this.onAllRoomsClosed?.();
     }
   }
 

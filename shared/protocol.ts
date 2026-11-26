@@ -50,6 +50,30 @@ export interface RuntimeInfo {
   torStatus?: 'bootstrapping' | 'ready' | 'error';
 }
 
+/**
+ * Normalizes an untrusted or partial runtime discovery payload into a safe RuntimeInfo object.
+ */
+export function sanitizeRuntimeInfo(info: unknown): RuntimeInfo {
+  if (!info || typeof info !== 'object') {
+    return { runtimeMode: 'normal' };
+  }
+  const obj = info as Record<string, unknown>;
+  const sanitized: RuntimeInfo = {
+    runtimeMode: obj.runtimeMode === 'tor' ? 'tor' : 'normal',
+  };
+  if (typeof obj.onionAddress === 'string' && obj.onionAddress.length > 0) {
+    sanitized.onionAddress = obj.onionAddress;
+  }
+  if (
+    obj.torStatus === 'bootstrapping' ||
+    obj.torStatus === 'ready' ||
+    obj.torStatus === 'error'
+  ) {
+    sanitized.torStatus = obj.torStatus;
+  }
+  return sanitized;
+}
+
 export interface IceServerConfig {
   urls: string | string[];
   username?: string;
