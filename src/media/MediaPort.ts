@@ -62,6 +62,7 @@ export interface MediaPort {
   getSnapshot(): MediaStateSnapshot;
   subscribe(listener: (event: MediaPortEvent) => void): () => void;
   setSignalSender(sender: ((signal: CallSignal) => Promise<void>) | null): void;
+  setIceServers?(iceServers: RTCIceServer[]): void;
   refreshDevices?(): Promise<void>;
   startPreview(options?: {
     cameraId?: string | null;

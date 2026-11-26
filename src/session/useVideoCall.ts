@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CallLayout, Participant, RoomMode, TransportEvent } from '../domain/types';
+import type {
+  CallLayout,
+  IceServerConfig,
+  Participant,
+  RoomMode,
+  TransportEvent,
+} from '../domain/types';
 import { BrowserMediaPort } from '../media/BrowserMediaPort';
 import {
   createInitialMediaSnapshot,
@@ -19,6 +25,7 @@ export interface UseVideoCallOptions {
   remoteParticipant: Participant | null;
   isInRoom: boolean;
   roomMode?: RoomMode;
+  iceServers?: IceServerConfig[];
 }
 
 export interface VideoCallController {
@@ -51,6 +58,7 @@ export function useVideoCall({
   localParticipant,
   isInRoom,
   roomMode = 'normal',
+  iceServers,
 }: UseVideoCallOptions): VideoCallController {
   const isTorMode = roomMode === 'tor';
   const ownsMediaPortRef = useRef(false);
@@ -141,6 +149,13 @@ export function useVideoCall({
       }
     };
   }, [isInRoom, isTorMode, transport]);
+
+  useEffect(() => {
+    if (isTorMode || !isInRoom) return;
+    const mediaPort = mediaPortRef.current;
+    if (!mediaPort?.setIceServers) return;
+    mediaPort.setIceServers(iceServers ?? []);
+  }, [iceServers, isInRoom, isTorMode]);
 
   useEffect(() => {
     return () => {

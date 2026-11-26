@@ -7,6 +7,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import {
   WS_PROTOCOL_VERSION,
   type ClientWsMessage,
+  type IceServerConfig,
   type RuntimeInfo,
 } from '../shared/protocol';
 import { systemClock, type Clock } from './clock';
@@ -22,6 +23,7 @@ export interface CreateServerOptions {
   inactivityDurationMs?: number;
   hardTtlMs?: number;
   graceWindowMs?: number;
+  iceServersProvider?: () => IceServerConfig[];
 }
 
 function resolveDefaultStaticDir(): string {
@@ -58,6 +60,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
     inactivityDurationMs: options.inactivityDurationMs,
     hardTtlMs: options.hardTtlMs,
     graceWindowMs: options.graceWindowMs,
+    iceServersProvider: options.iceServersProvider,
   });
   const runtimeInfo: RuntimeInfo = options.runtimeInfo ?? { runtimeMode: 'normal' };
   const staticDir = options.staticDir ?? resolveDefaultStaticDir();

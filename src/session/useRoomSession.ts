@@ -6,6 +6,7 @@ import { formatRoomCode, generateRoomCode, isValidRoomCode } from '../domain/roo
 import type {
   ConnectionStatus,
   EphemeralMessage,
+  IceServerConfig,
   Locale,
   Participant,
   RoomErrorCode,
@@ -99,6 +100,7 @@ export interface RoomSessionState {
   roomMode: RoomMode;
   onionAddress: string | null;
   inviteUrl: string | null;
+  iceServers: IceServerConfig[];
   localParticipant: Participant | null;
   participants: Participant[];
   messages: EphemeralMessage[];
@@ -165,6 +167,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   const [roomMode, setRoomMode] = useState<RoomMode>('normal');
   const [onionAddress, setOnionAddress] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [iceServers, setIceServers] = useState<IceServerConfig[]>([]);
   const [localParticipant, setLocalParticipant] = useState<Participant | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [messages, setMessages] = useState<EphemeralMessage[]>([]);
@@ -226,6 +229,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       setRoomMode('normal');
       setOnionAddress(null);
       setInviteUrl(null);
+      setIceServers([]);
       setLocalParticipant(null);
       setParticipants([]);
       setMessages([]);
@@ -358,6 +362,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           setRoomCode(event.roomCode);
           setRoomMode(effectiveMode);
           setOnionAddress(effectiveOnion);
+          setIceServers(effectiveMode === 'tor' ? [] : (event.iceServers ?? []));
           setInviteUrl(
             buildInviteUrl({
               origin,
@@ -844,6 +849,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     roomMode,
     onionAddress,
     inviteUrl,
+    iceServers,
     localParticipant,
     participants,
     messages,

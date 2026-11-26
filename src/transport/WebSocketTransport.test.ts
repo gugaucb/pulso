@@ -382,4 +382,69 @@ describe('WebSocketTransport', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(sockets2).toHaveLength(countAtTimeout);
   });
+
+  it('forwards iceServers in normal mode room_joined, strips them in tor mode, and keeps room socket open on tor_video_blocked', async () => {
+    const sockets: FakeWebSocket[] = [];
+    const transport = new WebSocketTransport({
+      url: 'ws://127.0.0.1:3001/ws',
+      webSocketFactory: () => {
+        const ws = new FakeWebSocket();
+        sockets.push(ws);
+        return ws;
+      },
+    });
+
+    const events: TransportEvent[] = [];
+    transport.subscribe((e) => events.push(e));
+
+    const joinNormal = transport.joinRoom({ roomCode: 'X9K2-P7M4', displayName: 'Ana' });
+    sockets[0].open();
+    sockets[0].receiveServerMessage({
+      type: 'room_joined',
+      version: WS_PROTOCOL_VERSION,
+      roomCode: 'X9K2-P7M4',
+      participant: { id: 'p-1', displayName: 'Ana', role: 'guest', online: true },
+      participants: [{ id: 'p-1', displayName: 'Ana', role: 'guest', online: true }],
+      mode: 'normal',
+      expiresAt: 1_700_003_600_000,
+      iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }],
+    });
+    await joinNormal;
+    expect(events[0]).toMatchObject({
+      type: 'room_joined',
+      iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }],
+    });
+
+    await transport.leaveRoom();
+
+    const joinTor = transport.joinRoom({ roomCode: 'T7R2-M9P4', displayName: 'Ana' });
+    sockets[1].open();
+    sockets[1].receiveServerMessage({
+      type: 'room_joined',
+      version: WS_PROTOCOL_VERSION,
+      roomCode: 'T7R2-M9P4',
+      participant: { id: 'p-2', displayName: 'Ana', role: 'guest', online: true },
+      participants: [{ id: 'p-2', displayName: 'Ana', role: 'guest', online: true }],
+      mode: 'tor',
+      expiresAt: 1_700_003_600_000,
+      iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }],
+    });
+    await joinTor;
+    expect(events[1]).not.toHaveProperty('iceServers');
+
+    sockets[1].receiveServerMessage({
+      type: 'room_error',
+      version: WS_PROTOCOL_VERSION,
+      code: 'tor_video_blocked',
+      message: 'Video calls are blocked in Tor mode',
+    });
+    expect(events[2]).toEqual({
+      type: 'room_error',
+      code: 'tor_video_blocked',
+      message: 'Video calls are blocked in Tor mode',
+    });
+    expect(sockets[1].closedCount).toBe(0);
+
+    transport.dispose();
+  });
 });

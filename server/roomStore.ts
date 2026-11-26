@@ -2,6 +2,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   WS_PROTOCOL_VERSION,
   type ClientWsMessage,
+  type IceServerConfig,
   type Participant,
   type ParticipantRole,
   type RoomExpiryReason,
@@ -11,6 +12,7 @@ import {
 } from '../shared/protocol';
 import { formatRoomCode, isValidRoomCode } from '../shared/roomCode';
 import { systemClock, type Clock, type TimerHandle } from './clock';
+import { buildIceServers } from './iceConfig';
 
 export const DEFAULT_INACTIVITY_MS = 60 * 60 * 1000;
 export const DEFAULT_HARD_TTL_MS = 24 * 60 * 60 * 1000;
@@ -18,9 +20,11 @@ export const DEFAULT_GRACE_WINDOW_MS = 30 * 1000;
 const MAX_DISPLAY_NAME_LENGTH = 48;
 
 export interface RoomStoreOptions {
+  clock?: Clock;
   inactivityDurationMs?: number;
   hardTtlMs?: number;
   graceWindowMs?: number;
+  iceServersProvider?: () => IceServerConfig[];
 }
 
 export interface ClientSession {
@@ -98,20 +102,35 @@ export class RoomStore {
   private readonly defaultInactivityMs: number;
   private readonly hardTtlMs: number;
   private readonly graceWindowMs: number;
+  private readonly iceServersProvider: () => IceServerConfig[];
   private readonly rooms = new Map<string, RoomRecord>();
   private readonly memberships = new Map<ClientSession, Membership>();
 
-  constructor(clock: Clock = systemClock, options: RoomStoreOptions = {}) {
-    this.clock = clock;
+  constructor(
+    clockOrOptions: Clock | RoomStoreOptions = systemClock,
+    options: Omit<RoomStoreOptions, 'clock'> = {},
+  ) {
+    let resolvedOptions: Omit<RoomStoreOptions, 'clock'>;
+    if ('now' in clockOrOptions && typeof clockOrOptions.now === 'function') {
+      this.clock = clockOrOptions;
+      resolvedOptions = options;
+    } else {
+      const storeOptions = clockOrOptions as RoomStoreOptions;
+      this.clock = storeOptions.clock ?? systemClock;
+      resolvedOptions = { ...storeOptions, ...options };
+    }
+
     this.defaultInactivityMs = resolveOptionMs(
-      options.inactivityDurationMs,
+      resolvedOptions.inactivityDurationMs,
       resolveEnvPositiveMs('PULSO_INACTIVITY_MS', DEFAULT_INACTIVITY_MS),
     );
-    this.hardTtlMs = resolveOptionMs(options.hardTtlMs, DEFAULT_HARD_TTL_MS);
+    this.hardTtlMs = resolveOptionMs(resolvedOptions.hardTtlMs, DEFAULT_HARD_TTL_MS);
     this.graceWindowMs = resolveOptionMs(
-      options.graceWindowMs,
+      resolvedOptions.graceWindowMs,
       resolveEnvPositiveMs('PULSO_GRACE_WINDOW_MS', DEFAULT_GRACE_WINDOW_MS),
     );
+    this.iceServersProvider =
+      resolvedOptions.iceServersProvider ?? (() => buildIceServers(process.env));
   }
 
   handleMessage(client: ClientSession, message: ClientWsMessage): void {
@@ -262,6 +281,7 @@ export class RoomStore {
       onionAddress: room.onionAddress,
       expiresAt,
       sessionToken,
+      ...(mode === 'normal' ? { iceServers: this.iceServersProvider() } : {}),
     });
   }
 
@@ -325,6 +345,7 @@ export class RoomStore {
       onionAddress: room.onionAddress,
       expiresAt: room.expiresAt,
       sessionToken,
+      ...(room.mode === 'normal' ? { iceServers: this.iceServersProvider() } : {}),
     });
 
     room.host.session?.send({
@@ -410,6 +431,7 @@ export class RoomStore {
       mode: room.mode,
       onionAddress: room.onionAddress,
       expiresAt: room.expiresAt,
+      ...(room.mode === 'normal' ? { iceServers: this.iceServersProvider() } : {}),
     });
 
     const peer = role === 'host' ? room.guest : room.host;
@@ -494,6 +516,7 @@ export class RoomStore {
 
       case 'call_signal':
         if (room.mode === 'tor') {
+          this.sendError(client, 'tor_video_blocked', 'Video calls are blocked in Tor mode');
           return;
         }
         peer?.session?.send({
@@ -504,6 +527,7 @@ export class RoomStore {
             fromId: membership.participantId,
           },
         });
+        this.refreshRoomActivity(room);
         break;
 
       case 'notify_activity':
