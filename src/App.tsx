@@ -54,6 +54,7 @@ function AppContent({
     remoteParticipant,
     isInRoom,
     roomMode: session.roomMode,
+    iceServers: session.roomMode === 'tor' ? undefined : session.iceServers,
   });
 
   const isTorMode = session.roomMode === 'tor';

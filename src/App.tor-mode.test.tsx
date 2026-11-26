@@ -25,6 +25,7 @@ function spyOnAllMediaPortMethods(mediaPort: FakeMediaPort) {
     vi.spyOn(mediaPort, 'handleSignal'),
     vi.spyOn(mediaPort, 'clearError'),
     vi.spyOn(mediaPort, 'setSignalSender'),
+    vi.spyOn(mediaPort, 'setIceServers'),
   ];
 }
 

@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import {
   WS_PROTOCOL_VERSION,
   type ClientWsMessage,
+  type IceServerConfig,
   type Participant,
   type ParticipantRole,
   type RoomMode,
@@ -10,6 +11,7 @@ import {
 } from '../shared/protocol';
 import { formatRoomCode, isValidRoomCode } from '../shared/roomCode';
 import { systemClock, type Clock } from './clock';
+import { buildIceServers } from './iceConfig';
 
 const DEFAULT_INACTIVITY_MS = 60 * 60 * 1000;
 const MAX_DISPLAY_NAME_LENGTH = 48;
@@ -17,6 +19,11 @@ const MAX_DISPLAY_NAME_LENGTH = 48;
 export interface ClientSession {
   send(message: ServerWsMessage): void;
   close?: () => void;
+}
+
+export interface RoomStoreOptions {
+  clock?: Clock;
+  iceServersProvider?: () => IceServerConfig[];
 }
 
 interface RoomMember {
@@ -64,11 +71,23 @@ function buildParticipantsList(room: RoomRecord): Participant[] {
  */
 export class RoomStore {
   private readonly clock: Clock;
+  private readonly iceServersProvider: () => IceServerConfig[];
   private readonly rooms = new Map<string, RoomRecord>();
   private readonly memberships = new Map<ClientSession, Membership>();
 
-  constructor(clock: Clock = systemClock) {
-    this.clock = clock;
+  constructor(
+    clockOrOptions: Clock | RoomStoreOptions = systemClock,
+    options: Omit<RoomStoreOptions, 'clock'> = {},
+  ) {
+    if ('now' in clockOrOptions && typeof clockOrOptions.now === 'function') {
+      this.clock = clockOrOptions;
+      this.iceServersProvider = options.iceServersProvider ?? (() => buildIceServers(process.env));
+    } else {
+      const storeOptions = clockOrOptions as RoomStoreOptions;
+      this.clock = storeOptions.clock ?? systemClock;
+      this.iceServersProvider =
+        storeOptions.iceServersProvider ?? options.iceServersProvider ?? (() => buildIceServers(process.env));
+    }
   }
 
   handleMessage(client: ClientSession, message: ClientWsMessage): void {
@@ -204,6 +223,7 @@ export class RoomStore {
       onionAddress: room.onionAddress,
       expiresAt,
       sessionToken,
+      ...(mode === 'normal' ? { iceServers: this.iceServersProvider() } : {}),
     });
   }
 
@@ -266,6 +286,7 @@ export class RoomStore {
       onionAddress: room.onionAddress,
       expiresAt: room.expiresAt,
       sessionToken,
+      ...(room.mode === 'normal' ? { iceServers: this.iceServersProvider() } : {}),
     });
 
     room.host.session.send({
@@ -349,6 +370,7 @@ export class RoomStore {
 
       case 'call_signal':
         if (room.mode === 'tor') {
+          this.sendError(client, 'tor_video_blocked', 'Video calls are blocked in Tor mode');
           return;
         }
         peer?.session.send({
@@ -359,6 +381,7 @@ export class RoomStore {
             fromId: membership.participantId,
           },
         });
+        this.refreshRoomActivity(room);
         break;
 
       case 'notify_activity':

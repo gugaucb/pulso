@@ -40,6 +40,7 @@ export const zhCN: TranslationDictionary = {
     room_not_found: '房间不存在或已过期。',
     room_full: '此 1 对 1 房间已有 2 位参与者。',
     room_expired: '此房间已过期或已被房主关闭。',
+    tor_video_blocked: 'Tor 模式下已禁用视频通话以保护您的匿名性。',
     transport_error: '无法连接到房间，请重试。',
     mediaPermissionDenied: '摄像头或麦克风权限被拒绝，您仍可继续发送阅后即焚消息。',
     mediaUnavailable: '此设备上无法使用摄像头或麦克风。',

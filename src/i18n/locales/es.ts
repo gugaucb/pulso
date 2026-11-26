@@ -40,6 +40,7 @@ export const es: TranslationDictionary = {
     room_not_found: 'Sala no encontrada o ya expirada.',
     room_full: 'Esta sala 1:1 ya está ocupada por 2 participantes.',
     room_expired: 'Esta sala expiró o fue cerrada por el anfitrión.',
+    tor_video_blocked: 'Las videollamadas están bloqueadas en Modo Tor para proteger tu anonimato.',
     transport_error: 'No se pudo conectar a la sala. Inténtalo de nuevo.',
     mediaPermissionDenied: 'Permiso de cámara o micrófono denegado. Puedes seguir enviando mensajes efímeros.',
     mediaUnavailable: 'La cámara o el micrófono no están disponibles en este dispositivo.',

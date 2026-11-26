@@ -7,6 +7,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import {
   WS_PROTOCOL_VERSION,
   type ClientWsMessage,
+  type IceServerConfig,
   type RuntimeInfo,
 } from '../shared/protocol';
 import { systemClock, type Clock } from './clock';
@@ -19,6 +20,7 @@ export interface CreateServerOptions {
   clock?: Clock;
   staticDir?: string;
   runtimeInfo?: RuntimeInfo;
+  iceServersProvider?: () => IceServerConfig[];
 }
 
 function resolveDefaultStaticDir(): string {
@@ -51,7 +53,9 @@ function isApiOrControlPath(pathname: string): boolean {
  */
 export async function createServer(options: CreateServerOptions = {}): Promise<FastifyInstance> {
   const clock = options.clock ?? systemClock;
-  const roomStore = new RoomStore(clock);
+  const roomStore = new RoomStore(clock, {
+    iceServersProvider: options.iceServersProvider,
+  });
   const runtimeInfo: RuntimeInfo = options.runtimeInfo ?? { runtimeMode: 'normal' };
   const staticDir = options.staticDir ?? resolveDefaultStaticDir();
 
