@@ -1,4 +1,4 @@
-import { Check, Clock, Copy, Globe, Link2, LogOut, Moon, Sun } from 'lucide-react';
+import { Check, Clock, Copy, Globe, Link2, LogOut, Moon, Settings, Sun, Video } from 'lucide-react';
 import type { Locale, Participant } from '../domain/types';
 import { DEFAULT_GUEST_NAMES, LOCALE_OPTIONS, useI18n } from '../i18n';
 import { useTheme } from '../theme/ThemeContext';
@@ -13,6 +13,7 @@ interface RoomSidebarProps {
   copiedLink: boolean;
   onCopyCode: () => void;
   onCopyLink: () => void;
+  onOpenSettings?: () => void;
   onLeaveRoom: () => void;
 }
 
@@ -24,6 +25,7 @@ export function RoomSidebar({
   copiedLink,
   onCopyCode,
   onCopyLink,
+  onOpenSettings,
   onLeaveRoom,
 }: RoomSidebarProps) {
   const { locale, setLocale, t } = useI18n();
@@ -76,7 +78,7 @@ export function RoomSidebar({
             {t.room.participants}
           </p>
           <ul className="space-y-2">
-            {participants.map((participant) => {
+            {participants.slice(0, 2).map((participant) => {
               const isSelf = participant.id === localParticipant.id;
               const isDefaultAnonymous = DEFAULT_GUEST_NAMES.has(participant.displayName);
               const label = isSelf
@@ -85,19 +87,40 @@ export function RoomSidebar({
                   : t.room.you
                 : participant.displayName;
               const avatarBg = isSelf ? 'bg-[#3B82F6]' : 'bg-[#6344F5]';
+              const statusLabel = participant.online ? t.room.statusOnline : t.room.statusOffline;
 
               return (
                 <li
                   key={participant.id}
-                  className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-slate-100"
+                  className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-100"
                 >
-                  <span
-                    className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white ${avatarBg}`}
-                    aria-hidden="true"
-                  >
-                    {getInitials(participant.displayName)}
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="relative shrink-0">
+                      <span
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold text-white ${avatarBg}`}
+                        aria-hidden="true"
+                      >
+                        {getInitials(participant.displayName)}
+                      </span>
+                      <span
+                        role="img"
+                        aria-label={statusLabel}
+                        title={statusLabel}
+                        className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-[#141522] ${
+                          participant.online ? 'bg-[#22C55E]' : 'bg-slate-500'
+                        }`}
+                      />
+                    </div>
+                    <span className="truncate font-medium">{label}</span>
+                  </div>
+                  <span className="shrink-0 w-4 flex items-center justify-center">
+                    {participant.videoEnabled && (
+                      <Video
+                        className="h-3.5 w-3.5 text-slate-300"
+                        aria-label={t.room.videoActive}
+                      />
+                    )}
                   </span>
-                  <span className="truncate font-medium">{label}</span>
                 </li>
               );
             })}
@@ -133,6 +156,17 @@ export function RoomSidebar({
             )}
             <span>{copiedLink ? t.room.linkCopied : t.room.copyLink}</span>
           </button>
+
+          {onOpenSettings && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-300 hover:bg-[#1B1D2C] hover:text-white transition cursor-pointer"
+            >
+              <Settings className="h-4 w-4 text-slate-400" aria-hidden="true" />
+              <span>{t.room.settings}</span>
+            </button>
+          )}
 
           <button
             type="button"

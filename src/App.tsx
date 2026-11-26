@@ -51,11 +51,14 @@ function AppContent({
         <RoomScreen
           roomCode={session.roomCode}
           inviteUrl={session.inviteUrl ?? session.roomCode}
+          connectionStatus={session.status}
           isHost={session.isHost}
           localParticipant={session.localParticipant}
           participants={session.participants}
           messages={session.messages}
+          typingParticipantName={session.typingParticipantName}
           onSendMessage={session.sendMessage}
+          onTypingChange={session.setTyping}
           onLeaveRoom={session.leaveRoom}
         />
       ) : (

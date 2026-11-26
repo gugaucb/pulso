@@ -53,6 +53,11 @@ export interface TranslationDictionary {
     aboutRoom: string;
     shortcuts: string;
     preferences: string;
+    settings: string;
+    statusOnline: string;
+    statusOffline: string;
+    statusWaiting: string;
+    videoActive: string;
     waitingForSomeone: string;
     onePersonOnline: string;
     twoPeopleOnline: string;
@@ -62,6 +67,7 @@ export interface TranslationDictionary {
     expiresIn1h: string;
     roomExpiresIn1h: string;
     roomCreatedBadge: string;
+    emptyHostInviteHint: string;
     connectedToRoom: (roomCode: string) => string;
     emptyGuestHint: string;
     optionsMenu: string;
