@@ -43,6 +43,7 @@ export interface UseRoomSessionOptions {
 }
 
 export interface RoomSessionState {
+  transport: RoomTransport;
   status: ConnectionStatus;
   roomCode: string | null;
   inviteUrl: string | null;
@@ -287,6 +288,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   }, []);
 
   return {
+    transport,
     status,
     roomCode,
     inviteUrl,
