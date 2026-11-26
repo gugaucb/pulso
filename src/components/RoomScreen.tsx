@@ -7,6 +7,7 @@ import { MessageList } from './MessageList';
 import { RoomHeader } from './RoomHeader';
 import { RoomSidebar } from './RoomSidebar';
 import { LeaveRoomDialog } from './modals/LeaveRoomDialog';
+import { SasVerificationModal } from './modals/SasVerificationModal';
 
 interface RoomScreenProps {
   roomCode: string;
@@ -17,6 +18,9 @@ interface RoomScreenProps {
   participants: Participant[];
   messages: EphemeralMessage[];
   typingParticipantName?: string | null;
+  sasCode: string | null;
+  e2eeReady: boolean;
+  hasLinkSecret: boolean;
   onSendMessage: (text: string) => Promise<void>;
   onTypingChange?: (isTyping: boolean) => void;
   onOpenSettings?: () => void;
@@ -32,6 +36,9 @@ export function RoomScreen({
   participants,
   messages,
   typingParticipantName,
+  sasCode,
+  e2eeReady,
+  hasLinkSecret,
   onSendMessage,
   onTypingChange,
   onOpenSettings,
@@ -42,6 +49,7 @@ export function RoomScreen({
   const [copiedLink, setCopiedLink] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [sasModalOpen, setSasModalOpen] = useState(false);
   const codeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const linkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -82,8 +90,10 @@ export function RoomScreen({
         participants={participants}
         copiedCode={copiedCode}
         copiedLink={copiedLink}
+        e2eeReady={e2eeReady}
         onCopyCode={handleCopyCode}
         onCopyLink={handleCopyLink}
+        onOpenSas={() => setSasModalOpen(true)}
         onOpenSettings={handleOpenSettings}
         onLeaveRoom={() => setLeaveConfirmOpen(true)}
       />
@@ -95,8 +105,10 @@ export function RoomScreen({
           participants={participants}
           copiedCode={copiedCode}
           copiedLink={copiedLink}
+          e2eeReady={e2eeReady}
           onCopyCode={handleCopyCode}
           onCopyLink={handleCopyLink}
+          onOpenSas={() => setSasModalOpen(true)}
           onOpenSettings={handleOpenSettings}
           onLeaveRoom={() => setLeaveConfirmOpen(true)}
         />
@@ -126,6 +138,13 @@ export function RoomScreen({
           setLeaveConfirmOpen(false);
           void onLeaveRoom();
         }}
+      />
+
+      <SasVerificationModal
+        open={sasModalOpen}
+        sasCode={sasCode}
+        hasLinkSecret={hasLinkSecret}
+        onClose={() => setSasModalOpen(false)}
       />
 
       {settingsOpen && (

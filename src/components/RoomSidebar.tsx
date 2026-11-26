@@ -1,4 +1,16 @@
-import { Check, Clock, Copy, Globe, Link2, LogOut, Moon, Settings, Sun, Video } from 'lucide-react';
+import {
+  Check,
+  Clock,
+  Copy,
+  Globe,
+  Link2,
+  LogOut,
+  Moon,
+  Settings,
+  ShieldCheck,
+  Sun,
+  Video,
+} from 'lucide-react';
 import type { Locale, Participant } from '../domain/types';
 import { DEFAULT_GUEST_NAMES, LOCALE_OPTIONS, useI18n } from '../i18n';
 import { useTheme } from '../theme/ThemeContext';
@@ -11,8 +23,10 @@ interface RoomSidebarProps {
   participants: Participant[];
   copiedCode: boolean;
   copiedLink: boolean;
+  e2eeReady: boolean;
   onCopyCode: () => void;
   onCopyLink: () => void;
+  onOpenSas: () => void;
   onOpenSettings?: () => void;
   onLeaveRoom: () => void;
 }
@@ -23,8 +37,10 @@ export function RoomSidebar({
   participants,
   copiedCode,
   copiedLink,
+  e2eeReady,
   onCopyCode,
   onCopyLink,
+  onOpenSas,
   onOpenSettings,
   onLeaveRoom,
 }: RoomSidebarProps) {
@@ -135,6 +151,17 @@ export function RoomSidebar({
             <Clock className="h-4 w-4 text-slate-400" aria-hidden="true" />
             <span>{t.room.expiresIn1h}</span>
           </div>
+          <button
+            type="button"
+            onClick={onOpenSas}
+            className="mt-2 w-full flex items-center gap-2 rounded-lg px-1.5 py-1.5 text-xs font-medium text-emerald-300 hover:bg-[#1B1D2C] hover:text-emerald-200 transition cursor-pointer text-left"
+          >
+            <ShieldCheck
+              className={`h-4 w-4 shrink-0 ${e2eeReady ? 'text-emerald-400' : 'text-slate-400'}`}
+              aria-hidden="true"
+            />
+            <span className="truncate">{t.e2ee.verifyAction}</span>
+          </button>
         </div>
       </div>
 

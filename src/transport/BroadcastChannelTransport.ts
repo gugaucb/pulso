@@ -38,7 +38,7 @@ type WireMessage =
   | { kind: 'participant_left'; senderId: string }
   | { kind: 'room_expired'; senderId: string }
   | { kind: 'encrypted_message'; senderId: string; envelope: EncryptedEnvelope }
-  | { kind: 'key_exchange'; senderId: string; publicKeyJwk: JsonWebKey }
+  | { kind: 'key_exchange'; senderId: string; publicKeyJwk: JsonWebKey; hasSecret?: boolean }
   | { kind: 'typing'; senderId: string; isTyping: boolean }
   | { kind: 'call_signal'; senderId: string; signal: CallSignal }
   | { kind: 'activity_reset'; senderId: string; expiresAt: number };
@@ -337,6 +337,7 @@ export class BroadcastChannelTransport implements RoomTransport {
           type: 'key_exchange',
           senderId: msg.senderId,
           publicKeyJwk: msg.publicKeyJwk,
+          hasSecret: msg.hasSecret,
         });
         break;
       }
@@ -379,12 +380,13 @@ export class BroadcastChannelTransport implements RoomTransport {
     } satisfies WireMessage);
   }
 
-  async sendKeyExchange(publicKeyJwk: JsonWebKey): Promise<void> {
+  async sendKeyExchange(publicKeyJwk: JsonWebKey, options?: { hasSecret?: boolean }): Promise<void> {
     if (!this.channel || !this.localParticipant) return;
     this.channel.postMessage({
       kind: 'key_exchange',
       senderId: this.localParticipant.id,
       publicKeyJwk,
+      hasSecret: options?.hasSecret,
     } satisfies WireMessage);
   }
 

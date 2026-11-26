@@ -104,6 +104,10 @@ export const ptBr: TranslationDictionary = {
     sasTitle: 'Verificação mútua (SAS)',
     sasDescription: 'Compare este código visual com o outro participante para confirmar ausência de intermediários.',
     sasCodeLabel: 'Código de verificação',
+    sasWaiting: 'Aguardando o outro participante conectar para gerar o código SAS…',
+    sasMismatchWarning: 'Se os códigos forem diferentes, saia da sala imediatamente — pode haver interceptação.',
+    sasLinkSecretActive: 'Proteção reforçada ativa via segredo #k do link de convite.',
+    sasManualModeHint: 'Entrada apenas por código da sala: confirme este código SAS com o outro participante.',
     close: 'Fechar',
   },
   inactivity: {

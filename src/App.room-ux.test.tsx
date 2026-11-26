@@ -29,7 +29,7 @@ describe('PULSO Ticket 04: Slack-style Room UX', () => {
       joinRoom: (p) => baseHostTransport.joinRoom(p),
       leaveRoom: () => baseHostTransport.leaveRoom(),
       sendEncryptedMessage: (e) => baseHostTransport.sendEncryptedMessage(e),
-      sendKeyExchange: (k) => baseHostTransport.sendKeyExchange(k),
+      sendKeyExchange: (k, opts) => baseHostTransport.sendKeyExchange(k, opts),
       setTyping: (t) => baseHostTransport.setTyping(t),
       sendCallSignal: (s) => baseHostTransport.sendCallSignal(s),
       notifyActivity: () => baseHostTransport.notifyActivity(),
@@ -314,6 +314,11 @@ describe('PULSO Ticket 04: Slack-style Room UX', () => {
     const user = userEvent.setup();
     const hub = new InMemoryTransportHub();
 
+    let copiedInviteUrl = '';
+    vi.spyOn(navigator.clipboard, 'writeText').mockImplementation(async (text) => {
+      copiedInviteUrl = text;
+    });
+
     const hostView = render(<App transport={hub.createTransport()} initialLocale="pt-br" />);
     const host = within(hostView.container);
 
@@ -322,10 +327,19 @@ describe('PULSO Ticket 04: Slack-style Room UX', () => {
       expect(host.getByText(/sua sala foi criada!/i)).toBeInTheDocument();
     });
 
-    const createdCode = host.getAllByText(ROOM_CODE_REGEX)[0].textContent!.trim();
+    // Host copies full invite link (with matching #k= secret)
+    await user.click(host.getByRole('button', { name: /compartilhar/i }));
+    await waitFor(() => {
+      expect(copiedInviteUrl).toContain('#k=');
+    });
+    const parsedUrl = new URL(copiedInviteUrl);
 
     // Guest joins via browser URL containing ?room= and #k=
-    window.history.replaceState(null, '', `/?room=${createdCode}#k=secret256`);
+    window.history.replaceState(
+      null,
+      '',
+      `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`,
+    );
     const guestView = render(<App transport={hub.createTransport()} initialLocale="pt-br" />);
     const guest = within(guestView.container);
 

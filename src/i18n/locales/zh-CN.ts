@@ -104,6 +104,10 @@ export const zhCN: TranslationDictionary = {
     sasTitle: '双向安全验证 (SAS)',
     sasDescription: '请与对方核对此验证码，确认通信不存在中间人拦截。',
     sasCodeLabel: '安全验证码',
+    sasWaiting: '正在等待另一位参与者连接以生成 SAS 验证码…',
+    sasMismatchWarning: '如果验证码不一致，请立即离开房间——通信可能正被中间人拦截。',
+    sasLinkSecretActive: '已启用邀请链接 #k 密钥增强保护。',
+    sasManualModeHint: '仅通过房间代码加入：请与对方核对此 SAS 验证码。',
     close: '关闭',
   },
   inactivity: {

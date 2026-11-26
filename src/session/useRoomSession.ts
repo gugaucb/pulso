@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createCodecE2eeSession, type E2eeSession } from '../crypto/cipherPort';
+import { createE2eeSession, type E2eeSession } from '../crypto/cipherPort';
 import { buildInviteUrl, parseInviteUrl } from '../domain/inviteLink';
 import { formatRoomCode, generateRoomCode, isValidRoomCode } from '../domain/roomCode';
 import type {
@@ -17,6 +17,19 @@ const DEFAULT_DISPLAY_NAME = 'Visitante';
 const TYPING_IDLE_TIMEOUT_MS = 2500;
 const REMOTE_TYPING_TIMEOUT_MS = 4000;
 
+interface Deferred {
+  promise: Promise<void>;
+  resolve: () => void;
+}
+
+function createDeferred(): Deferred {
+  let resolve!: () => void;
+  const promise = new Promise<void>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 function generateSecretKey(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
@@ -24,7 +37,9 @@ function generateSecretKey(): string {
   for (let i = 0; i < bytes.length; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const encoded = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  bytes.fill(0);
+  return encoded;
 }
 
 function createMessageId(): string {
@@ -69,12 +84,21 @@ export interface RoomSessionState {
   typingParticipantName: string | null;
   errorCode: RoomErrorCode | null;
   isHost: boolean;
+  sasCode: string | null;
+  e2eeReady: boolean;
+  hasLinkSecret: boolean;
   createRoom: (displayName?: string) => Promise<void>;
   joinRoom: (rawCode: string, displayName?: string) => Promise<void>;
   sendMessage: (text: string) => Promise<void>;
   setTyping: (isTyping: boolean) => void;
   leaveRoom: () => Promise<void>;
   clearError: () => void;
+}
+
+interface PendingKeyExchange {
+  senderId: string;
+  publicKeyJwk: JsonWebKey;
+  hasSecret?: boolean;
 }
 
 export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSessionState {
@@ -92,9 +116,18 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   const transport = transportRef.current;
 
   const e2eeRef = useRef<E2eeSession | null>(null);
+  const sessionGenRef = useRef(0);
   const secretKeyRef = useRef<string | undefined>(undefined);
   const roomCodeRef = useRef<string | null>(null);
   const localParticipantRef = useRef<Participant | null>(null);
+  const localPubJwkRef = useRef<JsonWebKey | null>(null);
+  const peerPresentRef = useRef(false);
+  const sentLocalKeyRef = useRef(false);
+  const pendingPeerKeyRef = useRef<PendingKeyExchange | null>(null);
+  const handshakeReadyRef = useRef<Deferred | null>(null);
+  const handshakeStartedRef = useRef(false);
+  const sendChainRef = useRef<Promise<void>>(Promise.resolve());
+  const receiveChainRef = useRef<Promise<void>>(Promise.resolve());
   const autoJoinAttemptedRef = useRef(false);
   const localIsTypingRef = useRef(false);
   const localTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,6 +141,9 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   const [messages, setMessages] = useState<EphemeralMessage[]>([]);
   const [typingParticipantId, setTypingParticipantId] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<RoomErrorCode | null>(null);
+  const [sasCode, setSasCode] = useState<string | null>(null);
+  const [e2eeReady, setE2eeReady] = useState(false);
+  const [hasLinkSecret, setHasLinkSecret] = useState(false);
 
   const clearTypingTimers = useCallback(() => {
     if (localTypingTimerRef.current) {
@@ -121,29 +157,104 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     localIsTypingRef.current = false;
   }, []);
 
-  const wipeVolatileState = useCallback((nextStatus: ConnectionStatus, nextError: RoomErrorCode | null = null) => {
-    clearTypingTimers();
+  const resetCryptoState = useCallback(() => {
+    sessionGenRef.current += 1;
+    handshakeReadyRef.current?.resolve();
+    handshakeReadyRef.current = null;
+    handshakeStartedRef.current = false;
+    pendingPeerKeyRef.current = null;
+    localPubJwkRef.current = null;
+    peerPresentRef.current = false;
+    sentLocalKeyRef.current = false;
     e2eeRef.current?.destroy();
     e2eeRef.current = null;
-    secretKeyRef.current = undefined;
-    roomCodeRef.current = null;
-    localParticipantRef.current = null;
+    setSasCode(null);
+    setE2eeReady(false);
+  }, []);
 
-    setRoomCode(null);
-    setInviteUrl(null);
-    setLocalParticipant(null);
-    setParticipants([]);
-    setMessages([]);
-    setTypingParticipantId(null);
-    setStatus(nextStatus);
-    setErrorCode(nextError);
-  }, [clearTypingTimers]);
+  const wipeVolatileState = useCallback(
+    (nextStatus: ConnectionStatus, nextError: RoomErrorCode | null = null) => {
+      clearTypingTimers();
+      resetCryptoState();
+      secretKeyRef.current = undefined;
+      roomCodeRef.current = null;
+      localParticipantRef.current = null;
+
+      setHasLinkSecret(false);
+      setRoomCode(null);
+      setInviteUrl(null);
+      setLocalParticipant(null);
+      setParticipants([]);
+      setMessages([]);
+      setTypingParticipantId(null);
+      setStatus(nextStatus);
+      setErrorCode(nextError);
+    },
+    [clearTypingTimers, resetCryptoState],
+  );
 
   useEffect(() => {
+    const finalizeHandshake = async (
+      session: E2eeSession,
+      gen: number,
+      peerKey: PendingKeyExchange,
+    ) => {
+      if (handshakeStartedRef.current || sessionGenRef.current !== gen) return;
+      handshakeStartedRef.current = true;
+
+      const isLocalHost = localParticipantRef.current?.role === 'host';
+      const useSecretKey = !(isLocalHost && peerKey.hasSecret === false);
+
+      try {
+        const derivedSas = await session.completeKeyExchange(peerKey.publicKeyJwk, {
+          useSecretKey,
+        });
+        if (sessionGenRef.current !== gen || e2eeRef.current !== session) return;
+
+        setHasLinkSecret(useSecretKey && Boolean(secretKeyRef.current));
+        setSasCode(derivedSas);
+        setE2eeReady(true);
+        handshakeReadyRef.current?.resolve();
+      } catch {
+        handshakeStartedRef.current = false;
+      }
+    };
+
+    const startE2eeSession = (code: string, participant: Participant, hasPeer: boolean) => {
+      resetCryptoState();
+      const gen = sessionGenRef.current;
+      const session = createE2eeSession({
+        role: participant.role,
+        roomCode: code,
+        secretKey: secretKeyRef.current,
+      });
+      e2eeRef.current = session;
+      handshakeReadyRef.current = createDeferred();
+      peerPresentRef.current = hasPeer;
+      setHasLinkSecret(Boolean(secretKeyRef.current));
+
+      void session.init().then((pubJwk) => {
+        if (sessionGenRef.current !== gen || e2eeRef.current !== session) return;
+        localPubJwkRef.current = pubJwk;
+
+        if (peerPresentRef.current && !sentLocalKeyRef.current) {
+          sentLocalKeyRef.current = true;
+          void transport.sendKeyExchange(pubJwk, {
+            hasSecret: Boolean(secretKeyRef.current),
+          });
+        }
+
+        if (pendingPeerKeyRef.current) {
+          const pending = pendingPeerKeyRef.current;
+          pendingPeerKeyRef.current = null;
+          void finalizeHandshake(session, gen, pending);
+        }
+      });
+    };
+
     const unsubscribe = transport.subscribe((event: TransportEvent) => {
       switch (event.type) {
         case 'room_joined': {
-          e2eeRef.current = createCodecE2eeSession();
           roomCodeRef.current = event.roomCode;
           localParticipantRef.current = event.participant;
 
@@ -167,11 +278,25 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           setMessages([]);
           setErrorCode(null);
           setStatus(event.participants.length >= 2 ? 'connected' : 'waiting');
+
+          startE2eeSession(
+            event.roomCode,
+            event.participant,
+            event.participants.length >= 2,
+          );
           break;
         }
         case 'participant_joined': {
           setParticipants(event.participants);
           setStatus('connected');
+          peerPresentRef.current = true;
+
+          if (localPubJwkRef.current && !sentLocalKeyRef.current) {
+            sentLocalKeyRef.current = true;
+            void transport.sendKeyExchange(localPubJwkRef.current, {
+              hasSecret: Boolean(secretKeyRef.current),
+            });
+          }
           break;
         }
         case 'participant_left': {
@@ -182,6 +307,41 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           setTypingParticipantId((prev) => (prev === event.participantId ? null : prev));
           setParticipants(event.participants);
           setStatus(event.participants.length >= 2 ? 'connected' : 'waiting');
+
+          const code = roomCodeRef.current;
+          const local = localParticipantRef.current;
+          if (event.participants.length < 2 && code && local) {
+            startE2eeSession(code, local, false);
+          }
+          break;
+        }
+        case 'key_exchange': {
+          if (event.senderId === localParticipantRef.current?.id) {
+            return;
+          }
+          peerPresentRef.current = true;
+
+          const session = e2eeRef.current;
+          const gen = sessionGenRef.current;
+          const payload: PendingKeyExchange = {
+            senderId: event.senderId,
+            publicKeyJwk: event.publicKeyJwk,
+            hasSecret: event.hasSecret,
+          };
+
+          if (!session || !localPubJwkRef.current) {
+            pendingPeerKeyRef.current = payload;
+            return;
+          }
+
+          if (!sentLocalKeyRef.current) {
+            sentLocalKeyRef.current = true;
+            void transport.sendKeyExchange(localPubJwkRef.current, {
+              hasSecret: Boolean(secretKeyRef.current),
+            });
+          }
+
+          void finalizeHandshake(session, gen, payload);
           break;
         }
         case 'typing': {
@@ -201,10 +361,18 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
         }
         case 'encrypted_message': {
           const session = e2eeRef.current;
+          const gen = sessionGenRef.current;
+          const handshake = handshakeReadyRef.current;
           if (!session) return;
-          void session
-            .decrypt(event.envelope)
-            .then((plaintext) => {
+
+          receiveChainRef.current = receiveChainRef.current.then(async () => {
+            if (sessionGenRef.current !== gen || e2eeRef.current !== session) return;
+            await handshake?.promise;
+            if (sessionGenRef.current !== gen || !session.isReady()) return;
+
+            try {
+              const plaintext = await session.decrypt(event.envelope);
+              if (sessionGenRef.current !== gen) return;
               const incoming: EphemeralMessage = {
                 id: `${event.envelope.senderId}-${event.envelope.seq}-${event.envelope.sentAt}`,
                 senderId: event.envelope.senderId,
@@ -217,10 +385,10 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
                 prev === event.envelope.senderId ? null : prev,
               );
               setMessages((prev) => [...prev, incoming]);
-            })
-            .catch(() => {
-              // Drop envelopes that fail decryption/authentication
-            });
+            } catch {
+              // Drop envelopes that fail decryption, GCM auth, or anti-replay checks
+            }
+          });
           break;
         }
         case 'room_expired': {
@@ -237,15 +405,15 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     return () => {
       unsubscribe();
       clearTypingTimers();
-      e2eeRef.current?.destroy();
-      e2eeRef.current = null;
+      resetCryptoState();
+      secretKeyRef.current = undefined;
       if (ownsTransportRef.current) {
         transport.dispose();
       } else {
         void transport.leaveRoom();
       }
     };
-  }, [clearTypingTimers, transport, wipeVolatileState]);
+  }, [clearTypingTimers, resetCryptoState, transport, wipeVolatileState]);
 
   const createRoom = useCallback(
     async (displayName?: string) => {
@@ -337,6 +505,8 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     async (rawText: string) => {
       const text = rawText.trim();
       const session = e2eeRef.current;
+      const gen = sessionGenRef.current;
+      const handshake = handshakeReadyRef.current;
       const currentCode = roomCodeRef.current;
       const sender = localParticipantRef.current;
 
@@ -346,24 +516,35 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
 
       setTyping(false);
 
-      const envelope = await session.encrypt(text, {
-        roomCode: currentCode,
-        senderId: sender.id,
-        senderName: sender.displayName,
-        senderRole: sender.role,
+      const task = sendChainRef.current.then(async () => {
+        if (sessionGenRef.current !== gen || e2eeRef.current !== session) return;
+        await handshake?.promise;
+        if (sessionGenRef.current !== gen || !session.isReady()) return;
+
+        const envelope = await session.encrypt(text, {
+          roomCode: currentCode,
+          senderId: sender.id,
+          senderName: sender.displayName,
+          senderRole: sender.role,
+        });
+
+        if (sessionGenRef.current !== gen) return;
+
+        const localMsg: EphemeralMessage = {
+          id: createMessageId(),
+          senderId: sender.id,
+          senderName: sender.displayName,
+          senderRole: sender.role,
+          text,
+          createdAt: envelope.sentAt,
+        };
+
+        setMessages((prev) => [...prev, localMsg]);
+        await transport.sendEncryptedMessage(envelope);
       });
 
-      const localMsg: EphemeralMessage = {
-        id: createMessageId(),
-        senderId: sender.id,
-        senderName: sender.displayName,
-        senderRole: sender.role,
-        text,
-        createdAt: envelope.sentAt,
-      };
-
-      setMessages((prev) => [...prev, localMsg]);
-      await transport.sendEncryptedMessage(envelope);
+      sendChainRef.current = task.catch(() => {});
+      await task;
     },
     [setTyping, transport],
   );
@@ -394,6 +575,9 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     typingParticipantName,
     errorCode,
     isHost: localParticipant?.role === 'host',
+    sasCode,
+    e2eeReady,
+    hasLinkSecret,
     createRoom,
     joinRoom,
     sendMessage,

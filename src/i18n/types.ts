@@ -99,6 +99,10 @@ export interface TranslationDictionary {
     sasTitle: string;
     sasDescription: string;
     sasCodeLabel: string;
+    sasWaiting: string;
+    sasMismatchWarning: string;
+    sasLinkSecretActive: string;
+    sasManualModeHint: string;
     close: string;
   };
   inactivity: {

@@ -23,7 +23,7 @@ export interface RoomTransport {
   joinRoom(params: JoinRoomParams): Promise<void>;
   leaveRoom(): Promise<void>;
   sendEncryptedMessage(envelope: EncryptedEnvelope): Promise<void>;
-  sendKeyExchange(publicKeyJwk: JsonWebKey): Promise<void>;
+  sendKeyExchange(publicKeyJwk: JsonWebKey, options?: { hasSecret?: boolean }): Promise<void>;
   setTyping(isTyping: boolean): Promise<void>;
   sendCallSignal(signal: CallSignal): Promise<void>;
   notifyActivity(): Promise<void>;

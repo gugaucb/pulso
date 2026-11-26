@@ -57,6 +57,9 @@ function AppContent({
           participants={session.participants}
           messages={session.messages}
           typingParticipantName={session.typingParticipantName}
+          sasCode={session.sasCode}
+          e2eeReady={session.e2eeReady}
+          hasLinkSecret={session.hasLinkSecret}
           onSendMessage={session.sendMessage}
           onTypingChange={session.setTyping}
           onLeaveRoom={session.leaveRoom}
