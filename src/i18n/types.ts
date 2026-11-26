@@ -114,6 +114,8 @@ export interface TranslationDictionary {
     warningBanner: string;
     criticalBanner: string;
     renewActivity: string;
+    confirmPresence: string;
+    expiredPurgeNotice: string;
   };
   videoCall: {
     startCall: string;

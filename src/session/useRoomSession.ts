@@ -12,6 +12,12 @@ import type {
 } from '../domain/types';
 import { BroadcastChannelTransport } from '../transport/BroadcastChannelTransport';
 import type { RoomTransport } from '../transport/RoomTransport';
+import {
+  computeRemainingMs,
+  DEFAULT_INACTIVITY_DURATION_MS,
+  getInactivityAlertLevel,
+  type InactivityAlertLevel,
+} from './inactivityTimer';
 
 const DEFAULT_DISPLAY_NAME = 'Visitante';
 const TYPING_IDLE_TIMEOUT_MS = 2500;
@@ -88,11 +94,16 @@ export interface RoomSessionState {
   sasCode: string | null;
   e2eeReady: boolean;
   hasLinkSecret: boolean;
+  inactivityRemainingMs: number;
+  inactivityAlertLevel: InactivityAlertLevel;
+  inactivityDurationMs: number;
   createRoom: (displayName?: string) => Promise<void>;
   joinRoom: (rawCode: string, displayName?: string) => Promise<void>;
   sendMessage: (text: string) => Promise<void>;
   setTyping: (isTyping: boolean) => void;
+  renewActivity: () => Promise<void>;
   leaveRoom: () => Promise<void>;
+  returnToEntry: () => void;
   clearError: () => void;
 }
 
@@ -134,6 +145,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   const localTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const effectiveDurationMs = options.inactivityDurationMs ?? DEFAULT_INACTIVITY_DURATION_MS;
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
@@ -145,6 +157,9 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   const [sasCode, setSasCode] = useState<string | null>(null);
   const [e2eeReady, setE2eeReady] = useState(false);
   const [hasLinkSecret, setHasLinkSecret] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [remainingMs, setRemainingMs] = useState<number>(effectiveDurationMs);
+  const expiresAtRef = useRef<number | null>(null);
 
   const clearTypingTimers = useCallback(() => {
     if (localTypingTimerRef.current) {
@@ -188,6 +203,9 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       setParticipants([]);
       setMessages([]);
       setTypingParticipantId(null);
+      expiresAtRef.current = null;
+      setExpiresAt(null);
+      setRemainingMs(0);
       setStatus(nextStatus);
       setErrorCode(nextError);
     },
@@ -250,6 +268,8 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           pendingPeerKeyRef.current = null;
           void finalizeHandshake(session, gen, pending);
         }
+      }).catch(() => {
+        // Session may be destroyed before key generation completes on room exit/expiry
       });
     };
 
@@ -278,6 +298,9 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           setParticipants(event.participants);
           setMessages([]);
           setErrorCode(null);
+          expiresAtRef.current = event.expiresAt;
+          setExpiresAt(event.expiresAt);
+          setRemainingMs(computeRemainingMs(event.expiresAt));
           setStatus(event.participants.length >= 2 ? 'connected' : 'waiting');
 
           startE2eeSession(
@@ -392,7 +415,15 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           });
           break;
         }
+        case 'activity_reset': {
+          if (!roomCodeRef.current) return;
+          expiresAtRef.current = event.expiresAt;
+          setExpiresAt(event.expiresAt);
+          setRemainingMs(computeRemainingMs(event.expiresAt));
+          break;
+        }
         case 'room_expired': {
+          clearBrowserRoomUrl();
           wipeVolatileState('expired', 'room_expired');
           break;
         }
@@ -542,6 +573,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
 
         setMessages((prev) => [...prev, localMsg]);
         await transport.sendEncryptedMessage(envelope);
+        await transport.notifyActivity();
       });
 
       sendChainRef.current = task.catch(() => {});
@@ -550,12 +582,73 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     [setTyping, transport],
   );
 
+  const expireRoom = useCallback(async () => {
+    if (!roomCodeRef.current) return;
+    if (expiresAtRef.current !== null && Date.now() < expiresAtRef.current) {
+      return;
+    }
+    clearBrowserRoomUrl();
+    wipeVolatileState('expired', 'room_expired');
+    await transport.leaveRoom();
+  }, [transport, wipeVolatileState]);
+
+  useEffect(() => {
+    const inRoom = status === 'waiting' || status === 'connected';
+    if (!inRoom || expiresAt === null) return;
+
+    const initialRemaining = computeRemainingMs(expiresAtRef.current ?? expiresAt);
+    setRemainingMs(initialRemaining);
+    if (initialRemaining <= 0) {
+      void expireRoom();
+      return;
+    }
+
+    const expireTimeout = setTimeout(() => {
+      void expireRoom();
+    }, initialRemaining);
+
+    let tickInterval: ReturnType<typeof setInterval> | null = null;
+    const firstDelay = initialRemaining % 1000 || 1000;
+    const alignTimeout = setTimeout(() => {
+      const rem = computeRemainingMs(expiresAtRef.current);
+      setRemainingMs(rem);
+      if (rem <= 0) {
+        void expireRoom();
+        return;
+      }
+      tickInterval = setInterval(() => {
+        const nextRem = computeRemainingMs(expiresAtRef.current);
+        setRemainingMs(nextRem);
+        if (nextRem <= 0) {
+          void expireRoom();
+        }
+      }, 1000);
+    }, firstDelay);
+
+    return () => {
+      clearTimeout(expireTimeout);
+      clearTimeout(alignTimeout);
+      if (tickInterval) clearInterval(tickInterval);
+    };
+  }, [expireRoom, expiresAt, status]);
+
+  const renewActivity = useCallback(async () => {
+    if (!roomCodeRef.current) return;
+    await transport.notifyActivity();
+  }, [transport]);
+
   const leaveRoom = useCallback(async () => {
     setTyping(false);
     await transport.leaveRoom();
     clearBrowserRoomUrl();
     wipeVolatileState('idle', null);
   }, [setTyping, transport, wipeVolatileState]);
+
+  const returnToEntry = useCallback(() => {
+    clearBrowserRoomUrl();
+    setErrorCode(null);
+    setStatus('idle');
+  }, []);
 
   const clearError = useCallback(() => {
     setErrorCode(null);
@@ -580,11 +673,16 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     sasCode,
     e2eeReady,
     hasLinkSecret,
+    inactivityRemainingMs: remainingMs,
+    inactivityAlertLevel: getInactivityAlertLevel(remainingMs),
+    inactivityDurationMs: effectiveDurationMs,
     createRoom,
     joinRoom,
     sendMessage,
     setTyping,
+    renewActivity,
     leaveRoom,
+    returnToEntry,
     clearError,
   };
 }

@@ -119,6 +119,8 @@ export const en: TranslationDictionary = {
     warningBanner: 'This room will self-destruct soon due to inactivity.',
     criticalBanner: 'Less than 1 minute remaining. Send a message or renew activity.',
     renewActivity: 'Renew timer',
+    confirmPresence: 'Confirm presence',
+    expiredPurgeNotice: 'All ephemeral messages and cryptographic keys have been permanently wiped from memory.',
   },
   videoCall: {
     startCall: 'Start video call',
