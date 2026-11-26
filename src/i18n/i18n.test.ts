@@ -34,6 +34,11 @@ describe('i18n core utilities', () => {
       expect(dict.brand.name).toBe('PULSO');
       expect(dict.entry.createButton.length).toBeGreaterThan(0);
       expect(dict.room.peopleOnline(2).length).toBeGreaterThan(0);
+      expect(dict.room.statusReconnecting.length).toBeGreaterThan(0);
+      expect(dict.room.reconnectingBanner.length).toBeGreaterThan(0);
+      expect(dict.room.expiredReasonHardTtl.length).toBeGreaterThan(0);
+      expect(dict.room.expiredReasonHostLeft.length).toBeGreaterThan(0);
+      expect(dict.room.expiredReasonGraceTimeout.length).toBeGreaterThan(0);
       expect(dict.messages.typingIndicator('Ana').length).toBeGreaterThan(0);
     }
   });

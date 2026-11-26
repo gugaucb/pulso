@@ -37,7 +37,9 @@ function AppContent({
   });
 
   const isInRoom = Boolean(
-    (session.status === 'waiting' || session.status === 'connected') &&
+    (session.status === 'waiting' ||
+      session.status === 'connected' ||
+      session.status === 'reconnecting') &&
       session.roomCode &&
       session.localParticipant,
   );
@@ -130,7 +132,10 @@ function AppContent({
           onLeaveRoom={session.leaveRoom}
         />
       ) : session.status === 'expired' ? (
-        <ExpiredRoomScreen onReturnToEntry={session.returnToEntry} />
+        <ExpiredRoomScreen
+          reason={session.expiryReason}
+          onReturnToEntry={session.returnToEntry}
+        />
       ) : (
         <EntryScreen
           status={session.status}

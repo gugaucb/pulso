@@ -9,6 +9,7 @@ import type {
   Locale,
   Participant,
   RoomErrorCode,
+  RoomExpiryReason,
   RoomMode,
   TransportEvent,
 } from '../domain/types';
@@ -103,6 +104,7 @@ export interface RoomSessionState {
   messages: EphemeralMessage[];
   typingParticipantName: string | null;
   errorCode: RoomErrorCode | null;
+  expiryReason: RoomExpiryReason | null;
   isHost: boolean;
   sasCode: string | null;
   e2eeReady: boolean;
@@ -168,6 +170,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   const [messages, setMessages] = useState<EphemeralMessage[]>([]);
   const [typingParticipantId, setTypingParticipantId] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<RoomErrorCode | null>(null);
+  const [expiryReason, setExpiryReason] = useState<RoomExpiryReason | null>(null);
   const [sasCode, setSasCode] = useState<string | null>(null);
   const [e2eeReady, setE2eeReady] = useState(false);
   const [hasLinkSecret, setHasLinkSecret] = useState(false);
@@ -203,7 +206,11 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   }, []);
 
   const wipeVolatileState = useCallback(
-    (nextStatus: ConnectionStatus, nextError: RoomErrorCode | null = null) => {
+    (
+      nextStatus: ConnectionStatus,
+      nextError: RoomErrorCode | null = null,
+      nextExpiryReason: RoomExpiryReason | null = null,
+    ) => {
       clearTypingTimers();
       resetCryptoState();
       pendingOutboundQueueRef.current = [];
@@ -228,6 +235,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       setRemainingMs(0);
       setStatus(nextStatus);
       setErrorCode(nextError);
+      setExpiryReason(nextExpiryReason);
     },
     [clearTypingTimers, resetCryptoState],
   );
@@ -363,6 +371,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           setParticipants(event.participants);
           setMessages([]);
           setErrorCode(null);
+          setExpiryReason(null);
           expiresAtRef.current = event.expiresAt;
           setExpiresAt(event.expiresAt);
           setRemainingMs(computeRemainingMs(event.expiresAt));
@@ -494,14 +503,58 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           setRemainingMs(computeRemainingMs(event.expiresAt));
           break;
         }
+        case 'reconnecting': {
+          if (!roomCodeRef.current) return;
+          if (event.participantId && event.participantId !== localParticipantRef.current?.id) {
+            setParticipants((prev) =>
+              prev.map((p) => (p.id === event.participantId ? { ...p, online: false } : p)),
+            );
+            break;
+          }
+          setStatus('reconnecting');
+          break;
+        }
+        case 'reconnected': {
+          roomCodeRef.current = event.roomCode;
+          localParticipantRef.current = event.participant;
+          participantsRef.current.set(event.participant.id, event.participant.displayName);
+          for (const p of event.participants) {
+            participantsRef.current.set(p.id, p.displayName);
+          }
+          peerPresentRef.current = event.participants.length >= 2;
+          setLocalParticipant(event.participant);
+          setParticipants(event.participants);
+          setErrorCode(null);
+          setExpiryReason(null);
+          expiresAtRef.current = event.expiresAt;
+          setExpiresAt(event.expiresAt);
+          setRemainingMs(computeRemainingMs(event.expiresAt));
+          setStatus(event.participants.length >= 2 ? 'connected' : 'waiting');
+          break;
+        }
+        case 'participant_reconnected': {
+          for (const p of event.participants) {
+            participantsRef.current.set(p.id, p.displayName);
+          }
+          peerPresentRef.current = event.participants.length >= 2;
+          setParticipants(event.participants);
+          setStatus((prev) =>
+            prev === 'reconnecting'
+              ? prev
+              : event.participants.length >= 2
+                ? 'connected'
+                : 'waiting',
+          );
+          break;
+        }
         case 'room_expired': {
           clearBrowserRoomUrl();
-          wipeVolatileState('expired', 'room_expired');
+          wipeVolatileState('expired', 'room_expired', event.reason ?? 'inactivity');
           break;
         }
         case 'room_error': {
           clearBrowserRoomUrl();
-          wipeVolatileState('error', event.code);
+          wipeVolatileState('error', event.code, null);
           break;
         }
       }
@@ -703,7 +756,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       return;
     }
     clearBrowserRoomUrl();
-    wipeVolatileState('expired', 'room_expired');
+    wipeVolatileState('expired', 'room_expired', 'inactivity');
     if (transport.expireRoom) {
       await transport.expireRoom();
     } else {
@@ -712,44 +765,48 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   }, [transport, wipeVolatileState]);
 
   useEffect(() => {
-    const inRoom = status === 'waiting' || status === 'connected';
+    const inRoom =
+      status === 'waiting' || status === 'connected' || status === 'reconnecting';
     if (!inRoom || expiresAt === null) return;
 
+    const hasServerAuthority = !transport.expireRoom;
     const initialRemaining = computeRemainingMs(expiresAtRef.current ?? expiresAt);
     setRemainingMs(initialRemaining);
-    if (initialRemaining <= 0) {
+    if (!hasServerAuthority && initialRemaining <= 0) {
       void expireRoom();
       return;
     }
 
-    const expireTimeout = setTimeout(() => {
-      void expireRoom();
-    }, initialRemaining);
+    const expireTimeout = hasServerAuthority
+      ? null
+      : setTimeout(() => {
+          void expireRoom();
+        }, initialRemaining);
 
     let tickInterval: ReturnType<typeof setInterval> | null = null;
     const firstDelay = initialRemaining % 1000 || 1000;
     const alignTimeout = setTimeout(() => {
       const rem = computeRemainingMs(expiresAtRef.current);
       setRemainingMs(rem);
-      if (rem <= 0) {
+      if (!hasServerAuthority && rem <= 0) {
         void expireRoom();
         return;
       }
       tickInterval = setInterval(() => {
         const nextRem = computeRemainingMs(expiresAtRef.current);
         setRemainingMs(nextRem);
-        if (nextRem <= 0) {
+        if (!hasServerAuthority && nextRem <= 0) {
           void expireRoom();
         }
       }, 1000);
     }, firstDelay);
 
     return () => {
-      clearTimeout(expireTimeout);
+      if (expireTimeout) clearTimeout(expireTimeout);
       clearTimeout(alignTimeout);
       if (tickInterval) clearInterval(tickInterval);
     };
-  }, [expireRoom, expiresAt, status]);
+  }, [expireRoom, expiresAt, status, transport]);
 
   const renewActivity = useCallback(async () => {
     if (!roomCodeRef.current) return;
@@ -766,11 +823,13 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   const returnToEntry = useCallback(() => {
     clearBrowserRoomUrl();
     setErrorCode(null);
+    setExpiryReason(null);
     setStatus('idle');
   }, []);
 
   const clearError = useCallback(() => {
     setErrorCode(null);
+    setExpiryReason(null);
     setStatus((prev) => (prev === 'error' ? 'idle' : prev));
   }, []);
 
@@ -790,6 +849,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     messages,
     typingParticipantName,
     errorCode,
+    expiryReason,
     isHost: localParticipant?.role === 'host',
     sasCode,
     e2eeReady,

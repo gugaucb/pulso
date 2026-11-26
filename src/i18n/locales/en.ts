@@ -66,6 +66,8 @@ export const en: TranslationDictionary = {
     statusOnline: 'Online',
     statusOffline: 'Offline',
     statusWaiting: 'Waiting',
+    statusReconnecting: 'Reconnecting…',
+    reconnectingBanner: 'Connection interrupted. Silently reconnecting to the room within the 30s grace window…',
     videoActive: 'Video active',
     waitingForSomeone: 'Waiting for someone…',
     onePersonOnline: '1 person online',
@@ -89,6 +91,9 @@ export const en: TranslationDictionary = {
     confirmLeaveConfirm: 'Leave and wipe',
     expiredTitle: 'Room closed',
     expiredBody: 'The inactivity timer reached zero and all ephemeral messages were purged.',
+    expiredReasonHardTtl: 'The room reached the 24-hour maximum lifetime and all ephemeral messages were purged.',
+    expiredReasonHostLeft: 'The host closed the room and all ephemeral messages were purged.',
+    expiredReasonGraceTimeout: 'The connection dropped beyond the 30-second reconnect window and the room was closed.',
     expiredAction: 'Back to start',
   },
   messages: {

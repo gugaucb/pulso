@@ -87,36 +87,47 @@ export function RoomHeader({
   const onlineCount = participants.filter((p) => p.online).length;
   const peerPresent = onlineCount >= 2;
   const isConnecting = connectionStatus === 'connecting';
-  const isOnline = !isConnecting && (connectionStatus === 'connected' ? peerPresent : peerPresent);
-  const presenceLabel = isConnecting
-    ? t.entry.connecting
-    : peerPresent
-      ? t.room.twoPeopleOnline
-      : t.room.waitingForSomeone;
+  const isReconnecting = connectionStatus === 'reconnecting';
+  const isOnline = !isConnecting && !isReconnecting && peerPresent;
+  const presenceLabel = isReconnecting
+    ? t.room.statusReconnecting
+    : isConnecting
+      ? t.entry.connecting
+      : peerPresent
+        ? t.room.twoPeopleOnline
+        : t.room.waitingForSomeone;
 
-  const statusBadge = isConnecting
+  const statusBadge = isReconnecting
     ? {
-        dotClass: 'bg-indigo-400 animate-pulse',
+        dotClass: 'bg-amber-400 animate-pulse',
         pillClass:
-          'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-500/30',
-        label: t.entry.connecting,
-        key: 'connecting',
+          'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-200/80 dark:border-amber-500/30',
+        label: t.room.statusReconnecting,
+        key: 'reconnecting',
       }
-    : isOnline
+    : isConnecting
       ? {
-          dotClass: 'bg-[#22C55E]',
+          dotClass: 'bg-indigo-400 animate-pulse',
           pillClass:
-            'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-500/30',
-          label: t.room.statusOnline,
-          key: 'online',
+            'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-500/30',
+          label: t.entry.connecting,
+          key: 'connecting',
         }
-      : {
-          dotClass: 'bg-amber-400 animate-pulse',
-          pillClass:
-            'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-200/80 dark:border-amber-500/30',
-          label: t.room.statusWaiting,
-          key: 'waiting',
-        };
+      : isOnline
+        ? {
+            dotClass: 'bg-[#22C55E]',
+            pillClass:
+              'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-500/30',
+            label: t.room.statusOnline,
+            key: 'online',
+          }
+        : {
+            dotClass: 'bg-amber-400 animate-pulse',
+            pillClass:
+              'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-200/80 dark:border-amber-500/30',
+            label: t.room.statusWaiting,
+            key: 'waiting',
+          };
 
   useDismissable(menuOpen, menuContainerRef, () => setMenuOpen(false));
 

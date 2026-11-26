@@ -66,6 +66,8 @@ export const zhCN: TranslationDictionary = {
     statusOnline: '在线',
     statusOffline: '离线',
     statusWaiting: '等待中',
+    statusReconnecting: '正在重连…',
+    reconnectingBanner: '连接不稳定，正在 30 秒宽限期内静默重连房间…',
     videoActive: '视频已开启',
     waitingForSomeone: '等待对方加入…',
     onePersonOnline: '1 人在线',
@@ -89,6 +91,9 @@ export const zhCN: TranslationDictionary = {
     confirmLeaveConfirm: '离开并清除',
     expiredTitle: '房间已关闭',
     expiredBody: '不活跃倒计时已归零，所有阅后即焚消息已被彻底清除。',
+    expiredReasonHardTtl: '房间已达到 24 小时最长存活上限，所有阅后即焚消息已被清除。',
+    expiredReasonHostLeft: '房主已关闭房间，所有阅后即焚消息已被清除。',
+    expiredReasonGraceTimeout: '连接断开超过 30 秒重连窗口，房间已关闭。',
     expiredAction: '返回首页',
   },
   messages: {

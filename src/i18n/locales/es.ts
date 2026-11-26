@@ -66,6 +66,8 @@ export const es: TranslationDictionary = {
     statusOnline: 'En línea',
     statusOffline: 'Desconectado',
     statusWaiting: 'Esperando',
+    statusReconnecting: 'Reconectando…',
+    reconnectingBanner: 'Conexión inestable. Reconectando silenciosamente a la sala dentro de la ventana de 30s…',
     videoActive: 'Video activo',
     waitingForSomeone: 'Esperando a alguien…',
     onePersonOnline: '1 persona en línea',
@@ -89,6 +91,9 @@ export const es: TranslationDictionary = {
     confirmLeaveConfirm: 'Salir y borrar',
     expiredTitle: 'Sala cerrada',
     expiredBody: 'El contador de inactividad llegó a cero y todos los mensajes efímeros fueron eliminados.',
+    expiredReasonHardTtl: 'La sala alcanzó el límite máximo de 24 horas y todos los mensajes efímeros fueron eliminados.',
+    expiredReasonHostLeft: 'El anfitrión cerró la sala y todos los mensajes efímeros fueron eliminados.',
+    expiredReasonGraceTimeout: 'La conexión se perdió más allá de la ventana de reconexión de 30 segundos y la sala se cerró.',
     expiredAction: 'Volver al inicio',
   },
   messages: {
