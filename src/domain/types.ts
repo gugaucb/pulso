@@ -4,6 +4,7 @@ import type {
   Participant,
   ParticipantRole,
   RoomErrorCode,
+  RoomExpiryReason,
   RoomMode,
   WireEncryptedEnvelope,
 } from '../../shared/protocol';
@@ -14,6 +15,7 @@ export type {
   Participant,
   ParticipantRole,
   RoomErrorCode,
+  RoomExpiryReason,
   RoomMode,
   WireEncryptedEnvelope,
 };
@@ -34,6 +36,7 @@ export type ConnectionStatus =
   | 'connecting'
   | 'waiting'
   | 'connected'
+  | 'reconnecting'
   | 'disconnected'
   | 'expired'
   | 'error';
@@ -90,9 +93,29 @@ export type TransportEvent =
     }
   | {
       type: 'room_expired';
+      reason?: RoomExpiryReason;
     }
   | {
       type: 'room_error';
       code: RoomErrorCode;
       message?: string;
+    }
+  | {
+      type: 'reconnecting';
+      participantId?: string;
+    }
+  | {
+      type: 'reconnected';
+      roomCode: string;
+      participant: Participant;
+      participants: Participant[];
+      mode: RoomMode;
+      onionAddress?: string;
+      expiresAt: number;
+      iceServers?: IceServerConfig[];
+    }
+  | {
+      type: 'participant_reconnected';
+      participant: Participant;
+      participants: Participant[];
     };

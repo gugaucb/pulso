@@ -200,4 +200,10 @@ export type ServerWsMessage =
       onionAddress?: string;
       expiresAt: number;
       iceServers?: IceServerConfig[];
+    }
+  | {
+      type: 'participant_reconnected';
+      version: number;
+      participant: Participant;
+      participants: Participant[];
     };

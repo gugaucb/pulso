@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { AlertTriangle, ChevronLeft, Info, MessageSquare, VideoOff, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, Info, MessageSquare, RefreshCw, VideoOff, X } from 'lucide-react';
 import type { ConnectionStatus, EphemeralMessage, Participant, RoomMode } from '../domain/types';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -214,6 +214,18 @@ export function RoomScreen({
           onToggleMobileSidebar={() => setMobileSidebarOpen((prev) => !prev)}
           mobileSidebarButtonRef={mobileSidebarButtonRef}
         />
+
+        {connectionStatus === 'reconnecting' && (
+          <div
+            role="status"
+            aria-live="polite"
+            data-connection-status-banner="reconnecting"
+            className="pulso-print-hide mx-4 sm:mx-5 mt-2.5 flex items-center gap-2 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/15 px-4 py-2 text-xs font-medium text-amber-900 dark:text-amber-200"
+          >
+            <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
+            <span>{t.room.reconnectingBanner}</span>
+          </div>
+        )}
 
         {inactivityAlertLevel !== 'normal' && (
           <div

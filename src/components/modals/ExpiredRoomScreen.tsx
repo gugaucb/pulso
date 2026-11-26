@@ -1,16 +1,27 @@
 import { ShieldOff } from 'lucide-react';
+import type { RoomExpiryReason } from '../../domain/types';
 import { useI18n } from '../../i18n';
 import { useTheme } from '../../theme/ThemeContext';
 import { PulsoLogo } from '../PulsoLogo';
 
 interface ExpiredRoomScreenProps {
+  reason?: RoomExpiryReason | null;
   onReturnToEntry: () => void;
 }
 
-export function ExpiredRoomScreen({ onReturnToEntry }: ExpiredRoomScreenProps) {
+export function ExpiredRoomScreen({ reason, onReturnToEntry }: ExpiredRoomScreenProps) {
   const { t } = useI18n();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+
+  const bodyText =
+    reason === 'hard_ttl'
+      ? t.room.expiredReasonHardTtl
+      : reason === 'host_left'
+        ? t.room.expiredReasonHostLeft
+        : reason === 'grace_timeout'
+          ? t.room.expiredReasonGraceTimeout
+          : t.room.expiredBody;
 
   return (
     <main className="min-h-screen bg-[#F8F9FC] dark:bg-[#1A1C2A] flex flex-col items-center justify-center p-4 transition-colors">
@@ -39,7 +50,7 @@ export function ExpiredRoomScreen({ onReturnToEntry }: ExpiredRoomScreenProps) {
             {t.room.expiredTitle}
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            {t.room.expiredBody}
+            {bodyText}
           </p>
         </div>
 

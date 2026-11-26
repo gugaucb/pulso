@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WS_PROTOCOL_VERSION, type ServerWsMessage } from '../../shared/protocol';
 import type { TransportEvent } from '../domain/types';
 import { WebSocketTransport, type WebSocketLike } from './WebSocketTransport';
@@ -182,6 +182,10 @@ describe('WebSocketTransport', () => {
     expect(sockets[1].closedCount).toBe(1);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('emits transport_error when socket fails before joining', async () => {
     const sockets: FakeWebSocket[] = [];
     const transport = new WebSocketTransport({
@@ -201,6 +205,182 @@ describe('WebSocketTransport', () => {
     await joinPromise;
 
     expect(events).toEqual([{ type: 'room_error', code: 'transport_error' }]);
+  });
+
+  it('automatically reconnects via reconnect_room using RAM-only sessionToken on unexpected drop', async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const transport = new WebSocketTransport({
+      url: 'ws://127.0.0.1:3001/ws',
+      webSocketFactory: () => {
+        const ws = new FakeWebSocket();
+        sockets.push(ws);
+        return ws;
+      },
+      reconnectWindowMs: 30_000,
+      reconnectBackoffBaseMs: 250,
+    });
+
+    const events: TransportEvent[] = [];
+    transport.subscribe((e) => events.push(e));
+
+    const joinPromise = transport.joinRoom({ roomCode: 'X9K2-P7M4', displayName: 'João' });
+    sockets[0].open();
+    sockets[0].receiveServerMessage({
+      type: 'room_joined',
+      version: WS_PROTOCOL_VERSION,
+      roomCode: 'X9K2-P7M4',
+      participant: { id: 'p-2', displayName: 'João', role: 'guest', online: true },
+      participants: [
+        { id: 'p-1', displayName: 'Ana', role: 'host', online: true },
+        { id: 'p-2', displayName: 'João', role: 'guest', online: true },
+      ],
+      mode: 'normal',
+      expiresAt: 1_700_003_600_000,
+      sessionToken: 'ephemeral-ram-token',
+    });
+    await joinPromise;
+
+    // Simulate abrupt network drop (not explicit leaveRoom)
+    sockets[0].fail();
+    expect(events.at(-1)).toEqual({ type: 'reconnecting' });
+
+    // Advance backoff -> opens second socket and sends reconnect_room
+    await vi.advanceTimersByTimeAsync(250);
+    expect(sockets).toHaveLength(2);
+    sockets[1].open();
+
+    expect(JSON.parse(sockets[1].sent[0])).toEqual({
+      type: 'reconnect_room',
+      version: WS_PROTOCOL_VERSION,
+      roomCode: 'X9K2-P7M4',
+      sessionToken: 'ephemeral-ram-token',
+    });
+
+    sockets[1].receiveServerMessage({
+      type: 'reconnected',
+      version: WS_PROTOCOL_VERSION,
+      roomCode: 'X9K2-P7M4',
+      participant: { id: 'p-2', displayName: 'João', role: 'guest', online: true },
+      participants: [
+        { id: 'p-1', displayName: 'Ana', role: 'host', online: true },
+        { id: 'p-2', displayName: 'João', role: 'guest', online: true },
+      ],
+      mode: 'normal',
+      expiresAt: 1_700_003_600_000,
+    });
+
+    expect(events.at(-1)).toMatchObject({
+      type: 'reconnected',
+      roomCode: 'X9K2-P7M4',
+    });
+
+    // Messaging works over the reconnected socket
+    await transport.sendEncryptedMessage({
+      version: 1,
+      roomCode: 'X9K2-P7M4',
+      senderId: 'p-2',
+      senderRole: 'guest',
+      seq: 5,
+      iv: 'iv-5',
+      ciphertext: 'cipher-5',
+      sentAt: 1_700_000_010_000,
+    });
+    expect(sockets[1].sent).toHaveLength(2);
+
+    // Explicit leaveRoom clears RAM sessionToken and must not reconnect on close
+    await transport.leaveRoom();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(sockets).toHaveLength(2);
+  });
+
+  it('stops retrying when server returns room_not_found or when 30s grace window expires', async () => {
+    vi.useFakeTimers();
+
+    // Case 1: server rejects reconnect_room with room_not_found
+    const sockets1: FakeWebSocket[] = [];
+    const t1 = new WebSocketTransport({
+      url: 'ws://127.0.0.1:3001/ws',
+      webSocketFactory: () => {
+        const ws = new FakeWebSocket();
+        sockets1.push(ws);
+        return ws;
+      },
+      reconnectWindowMs: 30_000,
+      reconnectBackoffBaseMs: 250,
+    });
+    const events1: TransportEvent[] = [];
+    t1.subscribe((e) => events1.push(e));
+
+    const p1 = t1.createRoom({ roomCode: 'X9K2-P7M4', displayName: 'Ana', mode: 'normal' });
+    sockets1[0].open();
+    sockets1[0].receiveServerMessage({
+      type: 'room_joined',
+      version: WS_PROTOCOL_VERSION,
+      roomCode: 'X9K2-P7M4',
+      participant: { id: 'p-1', displayName: 'Ana', role: 'host', online: true },
+      participants: [{ id: 'p-1', displayName: 'Ana', role: 'host', online: true }],
+      mode: 'normal',
+      expiresAt: 1_700_003_600_000,
+      sessionToken: 'tok-host',
+    });
+    await p1;
+
+    sockets1[0].fail();
+    await vi.advanceTimersByTimeAsync(250);
+    sockets1[1].open();
+    sockets1[1].receiveServerMessage({
+      type: 'room_error',
+      version: WS_PROTOCOL_VERSION,
+      code: 'room_not_found',
+    });
+
+    expect(events1.at(-1)).toEqual({ type: 'room_error', code: 'room_not_found' });
+    await vi.advanceTimersByTimeAsync(35_000);
+    expect(sockets1).toHaveLength(2);
+
+    // Case 2: 30s grace window elapses while offline -> emits room_expired grace_timeout and stops retrying
+    const sockets2: FakeWebSocket[] = [];
+    const t2 = new WebSocketTransport({
+      url: 'ws://127.0.0.1:3001/ws',
+      webSocketFactory: () => {
+        const ws = new FakeWebSocket();
+        sockets2.push(ws);
+        return ws;
+      },
+      reconnectWindowMs: 30_000,
+      reconnectBackoffBaseMs: 1_000,
+    });
+    const events2: TransportEvent[] = [];
+    t2.subscribe((e) => events2.push(e));
+
+    const p2 = t2.createRoom({ roomCode: 'A7K9-M2P4', displayName: 'Ana', mode: 'normal' });
+    sockets2[0].open();
+    sockets2[0].receiveServerMessage({
+      type: 'room_joined',
+      version: WS_PROTOCOL_VERSION,
+      roomCode: 'A7K9-M2P4',
+      participant: { id: 'p-1', displayName: 'Ana', role: 'host', online: true },
+      participants: [{ id: 'p-1', displayName: 'Ana', role: 'host', online: true }],
+      mode: 'normal',
+      expiresAt: 1_700_003_600_000,
+      sessionToken: 'tok-host-2',
+    });
+    await p2;
+
+    sockets2[0].fail();
+    for (let elapsed = 0; elapsed < 31_000; elapsed += 1_000) {
+      await vi.advanceTimersByTimeAsync(1_000);
+      const latest = sockets2.at(-1);
+      if (latest && latest.readyState === 0) {
+        latest.fail();
+      }
+    }
+
+    expect(events2.at(-1)).toEqual({ type: 'room_expired', reason: 'grace_timeout' });
+    const countAtTimeout = sockets2.length;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sockets2).toHaveLength(countAtTimeout);
   });
 
   it('forwards iceServers in normal mode room_joined, strips them in tor mode, and keeps room socket open on tor_video_blocked', async () => {

@@ -20,6 +20,9 @@ export interface CreateServerOptions {
   clock?: Clock;
   staticDir?: string;
   runtimeInfo?: RuntimeInfo;
+  inactivityDurationMs?: number;
+  hardTtlMs?: number;
+  graceWindowMs?: number;
   iceServersProvider?: () => IceServerConfig[];
 }
 
@@ -54,6 +57,9 @@ function isApiOrControlPath(pathname: string): boolean {
 export async function createServer(options: CreateServerOptions = {}): Promise<FastifyInstance> {
   const clock = options.clock ?? systemClock;
   const roomStore = new RoomStore(clock, {
+    inactivityDurationMs: options.inactivityDurationMs,
+    hardTtlMs: options.hardTtlMs,
+    graceWindowMs: options.graceWindowMs,
     iceServersProvider: options.iceServersProvider,
   });
   const runtimeInfo: RuntimeInfo = options.runtimeInfo ?? { runtimeMode: 'normal' };

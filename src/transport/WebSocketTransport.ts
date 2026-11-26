@@ -14,6 +14,9 @@ import type { CreateRoomParams, JoinRoomParams, RoomTransport } from './RoomTran
 
 const WS_READY_STATE_CONNECTING = 0;
 const WS_READY_STATE_OPEN = 1;
+const DEFAULT_RECONNECT_WINDOW_MS = 30_000;
+const DEFAULT_RECONNECT_BACKOFF_BASE_MS = 300;
+const DEFAULT_RECONNECT_BACKOFF_MAX_MS = 5_000;
 
 export interface WebSocketMessageEventLike {
   data: unknown;
@@ -36,6 +39,9 @@ export interface WebSocketLike {
 export interface WebSocketTransportOptions {
   url?: string;
   webSocketFactory?: (url: string) => WebSocketLike;
+  reconnectWindowMs?: number;
+  reconnectBackoffBaseMs?: number;
+  reconnectBackoffMaxMs?: number;
 }
 
 function defaultWebSocketFactory(url: string): WebSocketLike {
@@ -70,6 +76,9 @@ function toWireEnvelope(envelope: EncryptedEnvelope): WireEncryptedEnvelope {
 export class WebSocketTransport implements RoomTransport {
   private readonly configuredUrl?: string;
   private readonly webSocketFactory: (url: string) => WebSocketLike;
+  private readonly reconnectWindowMs: number;
+  private readonly reconnectBackoffBaseMs: number;
+  private readonly reconnectBackoffMaxMs: number;
   private readonly listeners = new Set<(event: TransportEvent) => void>();
 
   private socket: WebSocketLike | null = null;
@@ -79,9 +88,22 @@ export class WebSocketTransport implements RoomTransport {
   private pendingJoinResolve: (() => void) | null = null;
   private disposed = false;
 
+  // Ephemeral session credentials held strictly in RAM for 30s silent reconnect
+  private activeRoomCode: string | null = null;
+  private sessionToken: string | null = null;
+  private explicitLeave = false;
+  private reconnecting = false;
+  private reconnectDeadlineMs: number | null = null;
+  private reconnectAttempt = 0;
+  private reconnectRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectDeadlineTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(options: WebSocketTransportOptions = {}) {
     this.configuredUrl = options.url;
     this.webSocketFactory = options.webSocketFactory ?? defaultWebSocketFactory;
+    this.reconnectWindowMs = options.reconnectWindowMs ?? DEFAULT_RECONNECT_WINDOW_MS;
+    this.reconnectBackoffBaseMs = options.reconnectBackoffBaseMs ?? DEFAULT_RECONNECT_BACKOFF_BASE_MS;
+    this.reconnectBackoffMaxMs = options.reconnectBackoffMaxMs ?? DEFAULT_RECONNECT_BACKOFF_MAX_MS;
   }
 
   subscribe(listener: (event: TransportEvent) => void): () => void {
@@ -101,6 +123,29 @@ export class WebSocketTransport implements RoomTransport {
     const resolve = this.pendingJoinResolve;
     this.pendingJoinResolve = null;
     resolve?.();
+  }
+
+  private clearReconnectTimers(): void {
+    if (this.reconnectRetryTimer !== null) {
+      clearTimeout(this.reconnectRetryTimer);
+      this.reconnectRetryTimer = null;
+    }
+    if (this.reconnectDeadlineTimer !== null) {
+      clearTimeout(this.reconnectDeadlineTimer);
+      this.reconnectDeadlineTimer = null;
+    }
+  }
+
+  private clearReconnectState(): void {
+    this.clearReconnectTimers();
+    this.reconnecting = false;
+    this.reconnectDeadlineMs = null;
+    this.reconnectAttempt = 0;
+  }
+
+  private clearSessionCredentials(): void {
+    this.activeRoomCode = null;
+    this.sessionToken = null;
   }
 
   private closeCurrentSocket(): void {
@@ -148,7 +193,72 @@ export class WebSocketTransport implements RoomTransport {
     this.socket.send(JSON.stringify(message));
   }
 
-  private openAndSendInitial(initialMessage: ClientWsMessage): Promise<void> {
+  private handleReconnectWindowExpired(): void {
+    if (!this.reconnecting || this.disposed || this.explicitLeave) return;
+    this.clearReconnectState();
+    this.clearSessionCredentials();
+    this.inRoom = false;
+    this.connectGen += 1;
+    this.closeCurrentSocket();
+    this.emit({ type: 'room_expired', reason: 'grace_timeout' });
+  }
+
+  private scheduleNextReconnectAttempt(): void {
+    if (
+      !this.reconnecting ||
+      this.disposed ||
+      this.explicitLeave ||
+      !this.activeRoomCode ||
+      !this.sessionToken
+    ) {
+      return;
+    }
+    if (this.reconnectRetryTimer !== null) {
+      clearTimeout(this.reconnectRetryTimer);
+      this.reconnectRetryTimer = null;
+    }
+    const remaining = (this.reconnectDeadlineMs ?? 0) - Date.now();
+    if (remaining <= 0) {
+      this.handleReconnectWindowExpired();
+      return;
+    }
+    const backoff = Math.min(
+      this.reconnectBackoffBaseMs * Math.pow(2, this.reconnectAttempt),
+      this.reconnectBackoffMaxMs,
+    );
+    const delay = Math.min(backoff, remaining);
+    this.reconnectAttempt += 1;
+    this.reconnectRetryTimer = setTimeout(() => {
+      this.reconnectRetryTimer = null;
+      this.attemptReconnect();
+    }, delay);
+  }
+
+  private attemptReconnect(): void {
+    if (
+      !this.reconnecting ||
+      this.disposed ||
+      this.explicitLeave ||
+      !this.activeRoomCode ||
+      !this.sessionToken
+    ) {
+      return;
+    }
+    void this.openSocketAndSend(
+      {
+        type: 'reconnect_room',
+        version: WS_PROTOCOL_VERSION,
+        roomCode: this.activeRoomCode,
+        sessionToken: this.sessionToken,
+      },
+      false,
+    );
+  }
+
+  private openSocketAndSend(
+    initialMessage: ClientWsMessage,
+    awaitReady: boolean,
+  ): Promise<void> {
     this.connectGen += 1;
     const gen = this.connectGen;
     this.settlePendingJoin();
@@ -160,7 +270,11 @@ export class WebSocketTransport implements RoomTransport {
     this.socket = ws;
 
     return new Promise<void>((resolve) => {
-      this.pendingJoinResolve = resolve;
+      if (awaitReady) {
+        this.pendingJoinResolve = resolve;
+      } else {
+        resolve();
+      }
       let failed = false;
 
       const detach = () => {
@@ -179,9 +293,29 @@ export class WebSocketTransport implements RoomTransport {
         this.socketCleanup = null;
         detach();
         this.settlePendingJoin();
-        if (!wasInRoom || !this.disposed) {
-          this.emit({ type: 'room_error', code: 'transport_error' });
+
+        if (this.disposed || this.explicitLeave) {
+          return;
         }
+
+        if ((wasInRoom || this.reconnecting) && this.activeRoomCode && this.sessionToken) {
+          const startedReconnecting = !this.reconnecting;
+          this.reconnecting = true;
+          if (startedReconnecting) {
+            this.reconnectDeadlineMs = Date.now() + this.reconnectWindowMs;
+            this.reconnectAttempt = 0;
+            this.reconnectDeadlineTimer = setTimeout(() => {
+              this.handleReconnectWindowExpired();
+            }, this.reconnectWindowMs);
+            this.emit({ type: 'reconnecting' });
+          }
+          this.scheduleNextReconnectAttempt();
+          return;
+        }
+
+        this.clearReconnectState();
+        this.clearSessionCredentials();
+        this.emit({ type: 'room_error', code: 'transport_error' });
       };
 
       const onOpen = () => {
@@ -227,6 +361,9 @@ export class WebSocketTransport implements RoomTransport {
     switch (msg.type) {
       case 'room_joined': {
         this.inRoom = true;
+        this.activeRoomCode = msg.roomCode;
+        this.sessionToken = msg.sessionToken ?? null;
+        this.clearReconnectState();
         this.settlePendingJoin();
         this.emit({
           type: 'room_joined',
@@ -237,6 +374,38 @@ export class WebSocketTransport implements RoomTransport {
           onionAddress: msg.onionAddress,
           expiresAt: msg.expiresAt,
           ...(msg.mode !== 'tor' && msg.iceServers ? { iceServers: msg.iceServers } : {}),
+        });
+        break;
+      }
+      case 'reconnected': {
+        this.inRoom = true;
+        this.activeRoomCode = msg.roomCode;
+        this.clearReconnectState();
+        this.settlePendingJoin();
+        this.emit({
+          type: 'reconnected',
+          roomCode: msg.roomCode,
+          participant: msg.participant,
+          participants: msg.participants,
+          mode: msg.mode,
+          onionAddress: msg.onionAddress,
+          expiresAt: msg.expiresAt,
+          ...(msg.mode !== 'tor' && msg.iceServers ? { iceServers: msg.iceServers } : {}),
+        });
+        break;
+      }
+      case 'reconnecting': {
+        this.emit({
+          type: 'reconnecting',
+          participantId: msg.participantId,
+        });
+        break;
+      }
+      case 'participant_reconnected': {
+        this.emit({
+          type: 'participant_reconnected',
+          participant: msg.participant,
+          participants: msg.participants,
         });
         break;
       }
@@ -296,14 +465,31 @@ export class WebSocketTransport implements RoomTransport {
       }
       case 'room_expired': {
         this.inRoom = false;
+        this.clearReconnectState();
+        this.clearSessionCredentials();
         this.settlePendingJoin();
         this.closeCurrentSocket();
-        this.emit({ type: 'room_expired' });
+        this.emit({ type: 'room_expired', reason: msg.reason });
         break;
       }
       case 'room_error': {
+        const isFatal =
+          msg.code === 'room_not_found' ||
+          msg.code === 'room_expired' ||
+          msg.code === 'invalid_code' ||
+          msg.code === 'room_full';
+
         if (!this.inRoom) {
           this.closeCurrentSocket();
+        }
+        if (this.reconnecting && !isFatal) {
+          this.scheduleNextReconnectAttempt();
+          return;
+        }
+        if (isFatal || !this.inRoom) {
+          this.inRoom = false;
+          this.clearReconnectState();
+          this.clearSessionCredentials();
         }
         this.settlePendingJoin();
         this.emit({
@@ -323,17 +509,24 @@ export class WebSocketTransport implements RoomTransport {
       return;
     }
 
-    await this.openAndSendInitial({
-      type: 'create_room',
-      version: WS_PROTOCOL_VERSION,
-      roomCode: formatRoomCode(params.roomCode),
-      displayName: params.displayName,
-      mode: params.mode,
-      ...(params.onionAddress ? { onionAddress: params.onionAddress } : {}),
-      ...(params.inactivityDurationMs !== undefined
-        ? { inactivityDurationMs: params.inactivityDurationMs }
-        : {}),
-    });
+    this.explicitLeave = false;
+    this.clearReconnectState();
+    this.clearSessionCredentials();
+
+    await this.openSocketAndSend(
+      {
+        type: 'create_room',
+        version: WS_PROTOCOL_VERSION,
+        roomCode: formatRoomCode(params.roomCode),
+        displayName: params.displayName,
+        mode: params.mode,
+        ...(params.onionAddress ? { onionAddress: params.onionAddress } : {}),
+        ...(params.inactivityDurationMs !== undefined
+          ? { inactivityDurationMs: params.inactivityDurationMs }
+          : {}),
+      },
+      true,
+    );
   }
 
   async joinRoom(params: JoinRoomParams): Promise<void> {
@@ -343,16 +536,25 @@ export class WebSocketTransport implements RoomTransport {
       return;
     }
 
-    await this.openAndSendInitial({
-      type: 'join_room',
-      version: WS_PROTOCOL_VERSION,
-      roomCode: formatRoomCode(params.roomCode),
-      displayName: params.displayName,
-    });
+    this.explicitLeave = false;
+    this.clearReconnectState();
+    this.clearSessionCredentials();
+
+    await this.openSocketAndSend(
+      {
+        type: 'join_room',
+        version: WS_PROTOCOL_VERSION,
+        roomCode: formatRoomCode(params.roomCode),
+        displayName: params.displayName,
+      },
+      true,
+    );
   }
 
   async leaveRoom(): Promise<void> {
+    this.explicitLeave = true;
     this.connectGen += 1;
+    this.clearReconnectState();
     this.settlePendingJoin();
     if (this.inRoom) {
       this.sendClientMessage({
@@ -361,6 +563,7 @@ export class WebSocketTransport implements RoomTransport {
       });
     }
     this.inRoom = false;
+    this.clearSessionCredentials();
     this.closeCurrentSocket();
   }
 

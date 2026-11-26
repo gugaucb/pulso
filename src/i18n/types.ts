@@ -61,6 +61,8 @@ export interface TranslationDictionary {
     statusOnline: string;
     statusOffline: string;
     statusWaiting: string;
+    statusReconnecting: string;
+    reconnectingBanner: string;
     videoActive: string;
     waitingForSomeone: string;
     onePersonOnline: string;
@@ -84,6 +86,9 @@ export interface TranslationDictionary {
     confirmLeaveConfirm: string;
     expiredTitle: string;
     expiredBody: string;
+    expiredReasonHardTtl: string;
+    expiredReasonHostLeft: string;
+    expiredReasonGraceTimeout: string;
     expiredAction: string;
   };
   messages: {
