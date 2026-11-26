@@ -12,7 +12,7 @@ import type {
   RoomMode,
   TransportEvent,
 } from '../domain/types';
-import { BroadcastChannelTransport } from '../transport/BroadcastChannelTransport';
+import { createDefaultTransport } from '../transport/createDefaultTransport';
 import type { RoomTransport } from '../transport/RoomTransport';
 import {
   computeRemainingMs,
@@ -129,7 +129,7 @@ interface PendingKeyExchange {
 export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSessionState {
   const transportRef = useRef<RoomTransport | null>(null);
   if (!transportRef.current) {
-    transportRef.current = options.transport ?? new BroadcastChannelTransport();
+    transportRef.current = options.transport ?? createDefaultTransport();
   }
   const transport = transportRef.current;
 
@@ -138,6 +138,9 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   const secretKeyRef = useRef<string | undefined>(undefined);
   const roomCodeRef = useRef<string | null>(null);
   const localParticipantRef = useRef<Participant | null>(null);
+  const participantsRef = useRef<Map<string, string>>(new Map());
+  const defaultDisplayNameRef = useRef(options.defaultDisplayName ?? DEFAULT_DISPLAY_NAME);
+  defaultDisplayNameRef.current = options.defaultDisplayName ?? DEFAULT_DISPLAY_NAME;
   const localPubJwkRef = useRef<JsonWebKey | null>(null);
   const peerPresentRef = useRef(false);
   const sentLocalKeyRef = useRef(false);
@@ -207,6 +210,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       secretKeyRef.current = undefined;
       roomCodeRef.current = null;
       localParticipantRef.current = null;
+      participantsRef.current.clear();
       initialInviteModeRef.current = 'normal';
       initialOnionRef.current = null;
 
@@ -270,7 +274,6 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
                 const envelope = await session.encrypt(item.text, {
                   roomCode: currentCode,
                   senderId: sender.id,
-                  senderName: sender.displayName,
                   senderRole: sender.role,
                 });
                 if (sessionGenRef.current !== gen) break;
@@ -326,6 +329,11 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           pendingOutboundQueueRef.current = [];
           roomCodeRef.current = event.roomCode;
           localParticipantRef.current = event.participant;
+          participantsRef.current.clear();
+          participantsRef.current.set(event.participant.id, event.participant.displayName);
+          for (const p of event.participants) {
+            participantsRef.current.set(p.id, p.displayName);
+          }
 
           const effectiveMode: RoomMode =
             event.mode === 'tor' || initialInviteModeRef.current === 'tor' ? 'tor' : 'normal';
@@ -368,6 +376,10 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           break;
         }
         case 'participant_joined': {
+          participantsRef.current.set(event.participant.id, event.participant.displayName);
+          for (const p of event.participants) {
+            participantsRef.current.set(p.id, p.displayName);
+          }
           setParticipants(event.participants);
           setStatus('connected');
           peerPresentRef.current = true;
@@ -454,10 +466,13 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
             try {
               const plaintext = await session.decrypt(event.envelope);
               if (sessionGenRef.current !== gen) return;
+              const resolvedSenderName =
+                participantsRef.current.get(event.envelope.senderId) ??
+                defaultDisplayNameRef.current;
               const incoming: EphemeralMessage = {
                 id: `${event.envelope.senderId}-${event.envelope.seq}-${event.envelope.sentAt}`,
                 senderId: event.envelope.senderId,
-                senderName: event.envelope.senderName,
+                senderName: resolvedSenderName,
                 senderRole: event.envelope.senderRole,
                 text: plaintext,
                 createdAt: event.envelope.sentAt,
@@ -500,6 +515,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       secretKeyRef.current = undefined;
       roomCodeRef.current = null;
       localParticipantRef.current = null;
+      participantsRef.current.clear();
       void transport.leaveRoom();
     };
   }, [clearTypingTimers, resetCryptoState, transport, wipeVolatileState]);
@@ -656,7 +672,6 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
         const envelope = await session.encrypt(text, {
           roomCode: currentCode,
           senderId: sender.id,
-          senderName: sender.displayName,
           senderRole: sender.role,
         });
 

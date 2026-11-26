@@ -257,7 +257,6 @@ export function createE2eeSession(options: CreateE2eeSessionOptions): E2eeSessio
         version: PROTOCOL_VERSION,
         roomCode,
         senderId: context.senderId,
-        senderName: context.senderName,
         senderRole: role,
         seq,
         iv: bytesToBase64(iv),

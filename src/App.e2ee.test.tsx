@@ -107,9 +107,10 @@ describe('PULSO App E2EE and SAS integration', () => {
       expect(guest.getByText(secretMessage)).toBeInTheDocument();
     });
 
-    // RoomTransport saw ONLY opaque ciphertext, never the plaintext
+    // RoomTransport saw ONLY opaque ciphertext, never the plaintext or senderName
     expect(hostSpy.sentEnvelopes).toHaveLength(1);
     const wireEnvelope = hostSpy.sentEnvelopes[0];
+    expect(wireEnvelope).not.toHaveProperty('senderName');
     expect(JSON.stringify(wireEnvelope)).not.toContain(secretMessage);
     expect(atob(wireEnvelope.ciphertext)).not.toContain('Encontro');
 
@@ -121,6 +122,7 @@ describe('PULSO App E2EE and SAS integration', () => {
       expect(host.getByText(replyMessage)).toBeInTheDocument();
     });
     expect(guestSpy.sentEnvelopes).toHaveLength(1);
+    expect(guestSpy.sentEnvelopes[0]).not.toHaveProperty('senderName');
     expect(JSON.stringify(guestSpy.sentEnvelopes[0])).not.toContain(replyMessage);
 
     // Both Host and Guest open SasVerificationModal and see IDENTICAL deterministic SAS

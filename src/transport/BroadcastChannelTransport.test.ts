@@ -68,7 +68,6 @@ describe('BroadcastChannelTransport', () => {
       version: 1,
       roomCode: 'X9K2-P7M4',
       senderId: 'host-1',
-      senderName: 'Anfitrião Secreto',
       senderRole: 'host',
       seq: 1,
       iv: 'iv-1',
