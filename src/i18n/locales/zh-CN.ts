@@ -154,9 +154,15 @@ export const zhCN: TranslationDictionary = {
   },
   torMode: {
     badge: 'Tor 模式',
+    onionAddressLabel: '.onion 地址',
+    copyOnion: '复制 .onion',
+    onionCopied: '已复制 .onion！',
     onionInstructionsTitle: '通过 Tor Browser 分享',
     onionInstructionsBody: '请仅通过可信渠道将 .onion 地址与房间代码一并发送给对方。',
-    securityLevelNotice: '若 Tor Browser 安全级别拦截了 .onion HTTP 脚本，请按需为此房间允许脚本执行。',
+    hostReadyStatus: 'Tor .onion 房间已就绪：请通过 Tor Browser 分享 .onion 地址、房间代码或邀请链接。',
+    guestReadyStatus: '已进入 Tor 模式（仅限加密文本），音视频已严格禁用。',
+    textOnlyNotice: '仅限加密文本',
+    securityLevelNotice: '在 Tor Browser 的 Safer（.onion HTTP）或 Safest 安全级别下，请为此 .onion 地址允许 JavaScript 以运行端到端加密。',
   },
   privacy: {
     settingsTitle: '隐私与防截屏',

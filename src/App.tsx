@@ -50,9 +50,17 @@ function AppContent({
     localParticipant: session.localParticipant,
     remoteParticipant,
     isInRoom,
+    roomMode: session.roomMode,
   });
 
+  const isTorMode = session.roomMode === 'tor';
   const participantsWithVideo = session.participants.map((participant) => {
+    if (isTorMode) {
+      return {
+        ...participant,
+        videoEnabled: false,
+      };
+    }
     if (participant.id === session.localParticipant?.id) {
       return {
         ...participant,
@@ -85,6 +93,8 @@ function AppContent({
       {isInRoom && session.roomCode && session.localParticipant ? (
         <RoomScreen
           roomCode={session.roomCode}
+          roomMode={session.roomMode}
+          onionAddress={session.onionAddress}
           inviteUrl={session.inviteUrl ?? session.roomCode}
           connectionStatus={session.status}
           isHost={session.isHost}

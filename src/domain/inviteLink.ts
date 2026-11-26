@@ -1,3 +1,4 @@
+import { normalizeOnionAddress } from './onionAddress';
 import { formatRoomCode, isValidRoomCode } from './roomCode';
 import type { RoomMode } from './types';
 
@@ -63,13 +64,19 @@ export function parseInviteUrl(rawUrl: string): ParsedInviteUrl | null {
 
     const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''));
     const secretKey = hashParams.get('k') ?? undefined;
-    const isTor = url.searchParams.get('mode') === 'tor' || url.hostname.endsWith('.onion');
+    const rawOnionParam = url.searchParams.get('onion');
+    const normalizedOnionParam = rawOnionParam ? normalizeOnionAddress(rawOnionParam) : null;
+    const originOnion = url.hostname.endsWith('.onion') ? url.origin : undefined;
+    const isTor =
+      url.searchParams.get('mode') === 'tor' ||
+      url.hostname.endsWith('.onion') ||
+      rawOnionParam !== null;
 
     return {
       roomCode: formatRoomCode(rawCode),
       secretKey,
       mode: isTor ? 'tor' : 'normal',
-      onionAddress: isTor && url.hostname.endsWith('.onion') ? url.origin : undefined,
+      onionAddress: isTor ? (originOnion ?? normalizedOnionParam ?? undefined) : undefined,
     };
   } catch {
     return null;

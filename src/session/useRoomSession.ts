@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createE2eeSession, type E2eeSession } from '../crypto/cipherPort';
 import { buildInviteUrl, parseInviteUrl } from '../domain/inviteLink';
+import { generateOnionAddress, normalizeOnionAddress } from '../domain/onionAddress';
 import { formatRoomCode, generateRoomCode, isValidRoomCode } from '../domain/roomCode';
 import type {
   ConnectionStatus,
@@ -8,6 +9,7 @@ import type {
   Locale,
   Participant,
   RoomErrorCode,
+  RoomMode,
   TransportEvent,
 } from '../domain/types';
 import { BroadcastChannelTransport } from '../transport/BroadcastChannelTransport';
@@ -55,10 +57,14 @@ function clearBrowserRoomUrl(): void {
   if (typeof window === 'undefined' || !window.history?.replaceState) return;
   const url = new URL(window.location.href);
   const hasRoomParam = url.searchParams.has('room');
+  const hasModeParam = url.searchParams.has('mode');
+  const hasOnionParam = url.searchParams.has('onion');
   const hasKeyHash = url.hash.includes('k=');
-  if (!hasRoomParam && !hasKeyHash) return;
+  if (!hasRoomParam && !hasModeParam && !hasOnionParam && !hasKeyHash) return;
 
   url.searchParams.delete('room');
+  url.searchParams.delete('mode');
+  url.searchParams.delete('onion');
   if (hasKeyHash) {
     url.hash = '';
   }
@@ -74,10 +80,17 @@ export interface UseRoomSessionOptions {
   defaultDisplayName?: string;
 }
 
+export interface CreateRoomOptions {
+  mode?: RoomMode;
+  onionAddress?: string;
+}
+
 export interface RoomSessionState {
   transport: RoomTransport;
   status: ConnectionStatus;
   roomCode: string | null;
+  roomMode: RoomMode;
+  onionAddress: string | null;
   inviteUrl: string | null;
   localParticipant: Participant | null;
   participants: Participant[];
@@ -88,7 +101,7 @@ export interface RoomSessionState {
   sasCode: string | null;
   e2eeReady: boolean;
   hasLinkSecret: boolean;
-  createRoom: (displayName?: string) => Promise<void>;
+  createRoom: (displayName?: string, mode?: RoomMode, options?: CreateRoomOptions) => Promise<void>;
   joinRoom: (rawCode: string, displayName?: string) => Promise<void>;
   sendMessage: (text: string) => Promise<void>;
   setTyping: (isTyping: boolean) => void;
@@ -130,12 +143,16 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   const sendChainRef = useRef<Promise<void>>(Promise.resolve());
   const receiveChainRef = useRef<Promise<void>>(Promise.resolve());
   const autoJoinAttemptedRef = useRef(false);
+  const initialInviteModeRef = useRef<RoomMode>('normal');
+  const initialOnionRef = useRef<string | null>(null);
   const localIsTypingRef = useRef(false);
   const localTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [roomCode, setRoomCode] = useState<string | null>(null);
+  const [roomMode, setRoomMode] = useState<RoomMode>('normal');
+  const [onionAddress, setOnionAddress] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [localParticipant, setLocalParticipant] = useState<Participant | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -180,9 +197,13 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       secretKeyRef.current = undefined;
       roomCodeRef.current = null;
       localParticipantRef.current = null;
+      initialInviteModeRef.current = 'normal';
+      initialOnionRef.current = null;
 
       setHasLinkSecret(false);
       setRoomCode(null);
+      setRoomMode('normal');
+      setOnionAddress(null);
       setInviteUrl(null);
       setLocalParticipant(null);
       setParticipants([]);
@@ -259,19 +280,28 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           roomCodeRef.current = event.roomCode;
           localParticipantRef.current = event.participant;
 
+          const effectiveMode: RoomMode =
+            event.mode === 'tor' || initialInviteModeRef.current === 'tor' ? 'tor' : 'normal';
+          const effectiveOnion =
+            effectiveMode === 'tor'
+              ? (event.onionAddress ?? initialOnionRef.current ?? null)
+              : null;
+
           const origin =
             typeof window !== 'undefined' && window.location.origin !== 'null'
               ? window.location.origin
               : 'https://pulso.local';
 
           setRoomCode(event.roomCode);
+          setRoomMode(effectiveMode);
+          setOnionAddress(effectiveOnion);
           setInviteUrl(
             buildInviteUrl({
               origin,
               roomCode: event.roomCode,
               secretKey: secretKeyRef.current,
-              mode: event.mode,
-              onionAddress: event.onionAddress,
+              mode: effectiveMode,
+              onionAddress: effectiveOnion ?? undefined,
             }),
           );
           setLocalParticipant(event.participant);
@@ -417,18 +447,37 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   }, [clearTypingTimers, resetCryptoState, transport, wipeVolatileState]);
 
   const createRoom = useCallback(
-    async (displayName?: string) => {
+    async (displayName?: string, mode: RoomMode = 'normal', createOptions?: CreateRoomOptions) => {
+      const effectiveMode = createOptions?.mode ?? mode;
       const fallbackName = options.defaultDisplayName ?? DEFAULT_DISPLAY_NAME;
       const cleanName = displayName?.trim() || fallbackName;
       const code = generateRoomCode();
       secretKeyRef.current = generateSecretKey();
+      initialInviteModeRef.current = effectiveMode;
+
+      let resolvedOnion: string | undefined;
+      if (effectiveMode === 'tor') {
+        const provided = createOptions?.onionAddress
+          ? normalizeOnionAddress(createOptions.onionAddress)
+          : null;
+        const browserOnion =
+          typeof window !== 'undefined' && window.location.hostname.endsWith('.onion')
+            ? window.location.origin
+            : null;
+        resolvedOnion = provided ?? browserOnion ?? generateOnionAddress();
+      }
+      initialOnionRef.current = resolvedOnion ?? null;
+
+      setRoomMode(effectiveMode);
+      setOnionAddress(resolvedOnion ?? null);
       setErrorCode(null);
       setStatus('connecting');
 
       await transport.createRoom({
         roomCode: code,
         displayName: cleanName,
-        mode: 'normal',
+        mode: effectiveMode,
+        onionAddress: resolvedOnion,
         inactivityDurationMs: options.inactivityDurationMs,
       });
     },
@@ -470,6 +519,10 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     if (!parsed) return;
 
     secretKeyRef.current = parsed.secretKey;
+    initialInviteModeRef.current = parsed.mode;
+    initialOnionRef.current = parsed.onionAddress ?? null;
+    setRoomMode(parsed.mode);
+    setOnionAddress(parsed.onionAddress ?? null);
     void joinRoom(parsed.roomCode);
   }, [joinRoom, options.initialUrl]);
 
@@ -570,6 +623,8 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     transport,
     status,
     roomCode,
+    roomMode,
+    onionAddress,
     inviteUrl,
     localParticipant,
     participants,

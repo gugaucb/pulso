@@ -149,8 +149,14 @@ export interface TranslationDictionary {
   };
   torMode: {
     badge: string;
+    onionAddressLabel: string;
+    copyOnion: string;
+    onionCopied: string;
     onionInstructionsTitle: string;
     onionInstructionsBody: string;
+    hostReadyStatus: string;
+    guestReadyStatus: string;
+    textOnlyNotice: string;
     securityLevelNotice: string;
   };
   privacy: {

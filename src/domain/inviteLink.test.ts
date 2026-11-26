@@ -51,4 +51,33 @@ describe('inviteLink domain utilities', () => {
     expect(parseInviteUrl('https://pulso.example/?room=BAD0-CODE#k=abc')).toBeNull();
     expect(parseInviteUrl('https://pulso.example/s/SHORT')).toBeNull();
   });
+
+  it('parses Tor mode invite links with ?mode=tor or &onion= query parameters', () => {
+    const v3Host = `${'b'.repeat(56)}.onion`;
+    const modeOnly = parseInviteUrl('https://pulso.example/?room=A7K9-M2P4&mode=tor#k=torKey1');
+    expect(modeOnly).toEqual({
+      roomCode: 'A7K9-M2P4',
+      secretKey: 'torKey1',
+      mode: 'tor',
+      onionAddress: undefined,
+    });
+
+    const withOnionParam = parseInviteUrl(
+      `https://pulso.example/?room=A7K9-M2P4&onion=${v3Host}#k=torKey2`,
+    );
+    expect(withOnionParam).toEqual({
+      roomCode: 'A7K9-M2P4',
+      secretKey: 'torKey2',
+      mode: 'tor',
+      onionAddress: `http://${v3Host}`,
+    });
+
+    const onionOrigin = parseInviteUrl(`http://${v3Host}/?room=A7K9-M2P4&mode=tor#k=torKey3`);
+    expect(onionOrigin).toEqual({
+      roomCode: 'A7K9-M2P4',
+      secretKey: 'torKey3',
+      mode: 'tor',
+      onionAddress: `http://${v3Host}`,
+    });
+  });
 });

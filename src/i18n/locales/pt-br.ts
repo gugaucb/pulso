@@ -154,9 +154,15 @@ export const ptBr: TranslationDictionary = {
   },
   torMode: {
     badge: 'Modo Tor',
+    onionAddressLabel: 'Endereço .onion',
+    copyOnion: 'Copiar .onion',
+    onionCopied: '.onion copiado!',
     onionInstructionsTitle: 'Compartilhe pelo Tor Browser',
     onionInstructionsBody: 'Envie o endereço .onion junto ao Código da Sala apenas por um canal confiável.',
-    securityLevelNotice: 'No nível de segurança Mais Seguro do Tor Browser, libere scripts para esta sala .onion se necessário.',
+    hostReadyStatus: 'Sala .onion pronta: compartilhe o endereço .onion, o código da sala ou o link pelo Tor Browser.',
+    guestReadyStatus: 'Conectado via Modo Tor (somente texto cifrado). Áudio e vídeo permanecem bloqueados.',
+    textOnlyNotice: 'Somente texto cifrado',
+    securityLevelNotice: 'Nos níveis Safer (em .onion HTTP) ou Safest do Tor Browser, permita JavaScript para este endereço .onion para executar a criptografia ponta a ponta.',
   },
   privacy: {
     settingsTitle: 'Privacidade e anti-captura',

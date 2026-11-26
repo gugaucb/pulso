@@ -4,14 +4,17 @@ import {
   Copy,
   Globe,
   Link2,
+  Lock,
   LogOut,
   Moon,
   Settings,
   ShieldCheck,
   Sun,
   Video,
+  VideoOff,
 } from 'lucide-react';
-import type { Locale, Participant } from '../domain/types';
+import { formatOnionHost } from '../domain/onionAddress';
+import type { Locale, Participant, RoomMode } from '../domain/types';
 import { DEFAULT_GUEST_NAMES, LOCALE_OPTIONS, useI18n } from '../i18n';
 import { useTheme } from '../theme/ThemeContext';
 import { getInitials } from '../utils/formatters';
@@ -19,6 +22,8 @@ import { PulsoLogo } from './PulsoLogo';
 
 interface RoomSidebarProps {
   roomCode: string;
+  roomMode?: RoomMode;
+  onionAddress?: string | null;
   localParticipant: Participant;
   participants: Participant[];
   copiedCode: boolean;
@@ -33,6 +38,8 @@ interface RoomSidebarProps {
 
 export function RoomSidebar({
   roomCode,
+  roomMode = 'normal',
+  onionAddress,
   localParticipant,
   participants,
   copiedCode,
@@ -47,6 +54,7 @@ export function RoomSidebar({
   const { locale, setLocale, t } = useI18n();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
+  const isTorMode = roomMode === 'tor';
 
   const onlineCount = participants.filter((p) => p.online).length;
   const onlineText = t.room.peopleOnline(onlineCount);
@@ -87,6 +95,22 @@ export function RoomSidebar({
             <span className="h-2 w-2 rounded-full bg-[#22C55E]" aria-hidden="true" />
             <span>{onlineText}</span>
           </div>
+          {isTorMode && (
+            <div className="mt-2.5 space-y-1.5">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-400/35 bg-purple-500/15 px-2.5 py-1 text-[11px] font-semibold text-purple-200">
+                <Lock className="h-3 w-3" aria-hidden="true" />
+                <span>{t.torMode.badge}</span>
+              </span>
+              {onionAddress && (
+                <p
+                  className="font-mono-tabular text-[10px] text-slate-400 truncate"
+                  title={formatOnionHost(onionAddress)}
+                >
+                  {formatOnionHost(onionAddress)}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div>
@@ -130,7 +154,7 @@ export function RoomSidebar({
                     <span className="truncate font-medium">{label}</span>
                   </div>
                   <span className="shrink-0 w-6 flex items-center justify-end">
-                    {participant.videoEnabled && (
+                    {!isTorMode && participant.videoEnabled && (
                       <span
                         role="img"
                         aria-label={t.videoCall.participantVideoActive}
@@ -155,6 +179,12 @@ export function RoomSidebar({
             <Clock className="h-4 w-4 text-slate-400" aria-hidden="true" />
             <span>{t.room.expiresIn1h}</span>
           </div>
+          {isTorMode && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-purple-200 px-1">
+              <VideoOff className="h-3.5 w-3.5 shrink-0 text-purple-300" aria-hidden="true" />
+              <span>{t.torMode.textOnlyNotice}</span>
+            </div>
+          )}
           <button
             type="button"
             onClick={onOpenSas}
