@@ -14,6 +14,8 @@ import { BroadcastChannelTransport } from '../transport/BroadcastChannelTranspor
 import type { RoomTransport } from '../transport/RoomTransport';
 
 const DEFAULT_DISPLAY_NAME = 'Visitante';
+const TYPING_IDLE_TIMEOUT_MS = 2500;
+const REMOTE_TYPING_TIMEOUT_MS = 4000;
 
 interface Deferred {
   promise: Promise<void>;
@@ -49,6 +51,21 @@ function createMessageId(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+function clearBrowserRoomUrl(): void {
+  if (typeof window === 'undefined' || !window.history?.replaceState) return;
+  const url = new URL(window.location.href);
+  const hasRoomParam = url.searchParams.has('room');
+  const hasKeyHash = url.hash.includes('k=');
+  if (!hasRoomParam && !hasKeyHash) return;
+
+  url.searchParams.delete('room');
+  if (hasKeyHash) {
+    url.hash = '';
+  }
+  const nextRelativeUrl = `${url.pathname}${url.search}${url.hash}`;
+  window.history.replaceState(null, '', nextRelativeUrl || '/');
+}
+
 export interface UseRoomSessionOptions {
   transport?: RoomTransport;
   initialUrl?: string;
@@ -65,6 +82,7 @@ export interface RoomSessionState {
   localParticipant: Participant | null;
   participants: Participant[];
   messages: EphemeralMessage[];
+  typingParticipantName: string | null;
   errorCode: RoomErrorCode | null;
   isHost: boolean;
   sasCode: string | null;
@@ -73,6 +91,7 @@ export interface RoomSessionState {
   createRoom: (displayName?: string) => Promise<void>;
   joinRoom: (rawCode: string, displayName?: string) => Promise<void>;
   sendMessage: (text: string) => Promise<void>;
+  setTyping: (isTyping: boolean) => void;
   leaveRoom: () => Promise<void>;
   clearError: () => void;
 }
@@ -111,6 +130,9 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   const sendChainRef = useRef<Promise<void>>(Promise.resolve());
   const receiveChainRef = useRef<Promise<void>>(Promise.resolve());
   const autoJoinAttemptedRef = useRef(false);
+  const localIsTypingRef = useRef(false);
+  const localTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const remoteTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [roomCode, setRoomCode] = useState<string | null>(null);
@@ -118,10 +140,23 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   const [localParticipant, setLocalParticipant] = useState<Participant | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [messages, setMessages] = useState<EphemeralMessage[]>([]);
+  const [typingParticipantId, setTypingParticipantId] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<RoomErrorCode | null>(null);
   const [sasCode, setSasCode] = useState<string | null>(null);
   const [e2eeReady, setE2eeReady] = useState(false);
   const [hasLinkSecret, setHasLinkSecret] = useState(false);
+
+  const clearTypingTimers = useCallback(() => {
+    if (localTypingTimerRef.current) {
+      clearTimeout(localTypingTimerRef.current);
+      localTypingTimerRef.current = null;
+    }
+    if (remoteTypingTimerRef.current) {
+      clearTimeout(remoteTypingTimerRef.current);
+      remoteTypingTimerRef.current = null;
+    }
+    localIsTypingRef.current = false;
+  }, []);
 
   const resetCryptoState = useCallback(() => {
     sessionGenRef.current += 1;
@@ -140,6 +175,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
 
   const wipeVolatileState = useCallback(
     (nextStatus: ConnectionStatus, nextError: RoomErrorCode | null = null) => {
+      clearTypingTimers();
       resetCryptoState();
       secretKeyRef.current = undefined;
       roomCodeRef.current = null;
@@ -151,10 +187,11 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       setLocalParticipant(null);
       setParticipants([]);
       setMessages([]);
+      setTypingParticipantId(null);
       setStatus(nextStatus);
       setErrorCode(nextError);
     },
-    [resetCryptoState],
+    [clearTypingTimers, resetCryptoState],
   );
 
   useEffect(() => {
@@ -264,6 +301,11 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           break;
         }
         case 'participant_left': {
+          if (remoteTypingTimerRef.current) {
+            clearTimeout(remoteTypingTimerRef.current);
+            remoteTypingTimerRef.current = null;
+          }
+          setTypingParticipantId((prev) => (prev === event.participantId ? null : prev));
           setParticipants(event.participants);
           setStatus(event.participants.length >= 2 ? 'connected' : 'waiting');
 
@@ -303,6 +345,21 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           void finalizeHandshake(session, gen, payload);
           break;
         }
+        case 'typing': {
+          if (remoteTypingTimerRef.current) {
+            clearTimeout(remoteTypingTimerRef.current);
+            remoteTypingTimerRef.current = null;
+          }
+          if (event.isTyping) {
+            setTypingParticipantId(event.participantId);
+            remoteTypingTimerRef.current = setTimeout(() => {
+              setTypingParticipantId((prev) => (prev === event.participantId ? null : prev));
+            }, REMOTE_TYPING_TIMEOUT_MS);
+          } else {
+            setTypingParticipantId((prev) => (prev === event.participantId ? null : prev));
+          }
+          break;
+        }
         case 'encrypted_message': {
           const session = e2eeRef.current;
           const gen = sessionGenRef.current;
@@ -325,6 +382,9 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
                 text: plaintext,
                 createdAt: event.envelope.sentAt,
               };
+              setTypingParticipantId((prev) =>
+                prev === event.envelope.senderId ? null : prev,
+              );
               setMessages((prev) => [...prev, incoming]);
             } catch {
               // Drop envelopes that fail decryption, GCM auth, or anti-replay checks
@@ -345,6 +405,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
 
     return () => {
       unsubscribe();
+      clearTypingTimers();
       resetCryptoState();
       secretKeyRef.current = undefined;
       if (ownsTransportRef.current) {
@@ -353,7 +414,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
         void transport.leaveRoom();
       }
     };
-  }, [resetCryptoState, transport, wipeVolatileState]);
+  }, [clearTypingTimers, resetCryptoState, transport, wipeVolatileState]);
 
   const createRoom = useCallback(
     async (displayName?: string) => {
@@ -412,6 +473,35 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     void joinRoom(parsed.roomCode);
   }, [joinRoom, options.initialUrl]);
 
+  const setTyping = useCallback(
+    (isTyping: boolean) => {
+      if (!roomCodeRef.current) return;
+
+      if (localTypingTimerRef.current) {
+        clearTimeout(localTypingTimerRef.current);
+        localTypingTimerRef.current = null;
+      }
+
+      if (isTyping) {
+        if (!localIsTypingRef.current) {
+          localIsTypingRef.current = true;
+          void transport.setTyping(true);
+        }
+        localTypingTimerRef.current = setTimeout(() => {
+          localTypingTimerRef.current = null;
+          if (localIsTypingRef.current) {
+            localIsTypingRef.current = false;
+            void transport.setTyping(false);
+          }
+        }, TYPING_IDLE_TIMEOUT_MS);
+      } else if (localIsTypingRef.current) {
+        localIsTypingRef.current = false;
+        void transport.setTyping(false);
+      }
+    },
+    [transport],
+  );
+
   const sendMessage = useCallback(
     async (rawText: string) => {
       const text = rawText.trim();
@@ -424,6 +514,8 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       if (!text || !session || !currentCode || !sender) {
         return;
       }
+
+      setTyping(false);
 
       const task = sendChainRef.current.then(async () => {
         if (sessionGenRef.current !== gen || e2eeRef.current !== session) return;
@@ -455,18 +547,24 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       sendChainRef.current = task.catch(() => {});
       await task;
     },
-    [transport],
+    [setTyping, transport],
   );
 
   const leaveRoom = useCallback(async () => {
+    setTyping(false);
     await transport.leaveRoom();
+    clearBrowserRoomUrl();
     wipeVolatileState('idle', null);
-  }, [transport, wipeVolatileState]);
+  }, [setTyping, transport, wipeVolatileState]);
 
   const clearError = useCallback(() => {
     setErrorCode(null);
     setStatus((prev) => (prev === 'error' ? 'idle' : prev));
   }, []);
+
+  const typingParticipantName = typingParticipantId
+    ? (participants.find((p) => p.id === typingParticipantId)?.displayName ?? null)
+    : null;
 
   return {
     transport,
@@ -476,6 +574,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     localParticipant,
     participants,
     messages,
+    typingParticipantName,
     errorCode,
     isHost: localParticipant?.role === 'host',
     sasCode,
@@ -484,6 +583,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     createRoom,
     joinRoom,
     sendMessage,
+    setTyping,
     leaveRoom,
     clearError,
   };

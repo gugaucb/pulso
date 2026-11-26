@@ -22,3 +22,24 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+@keyframes pulso-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-message-in {
+  animation: pulso-message-in 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-message-in {
+    animation: none;
+  }
+}

@@ -1,11 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Globe, Link2, LogOut, Moon, MoreVertical, ShieldCheck, Sun, Video } from 'lucide-react';
-import type { Participant } from '../domain/types';
+import {
+  Check,
+  Copy,
+  Globe,
+  Link2,
+  LogOut,
+  Moon,
+  MoreVertical,
+  Settings,
+  ShieldCheck,
+  Sun,
+  Video,
+} from 'lucide-react';
+import type { ConnectionStatus, Participant } from '../domain/types';
 import { LOCALE_OPTIONS, useI18n } from '../i18n';
 import { useTheme } from '../theme/ThemeContext';
 
 interface RoomHeaderProps {
   roomCode: string;
+  connectionStatus?: ConnectionStatus;
   participants: Participant[];
   copiedCode: boolean;
   copiedLink: boolean;
@@ -15,11 +28,13 @@ interface RoomHeaderProps {
   onCopyCode: () => void;
   onCopyLink: () => void;
   onOpenSas: () => void;
+  onOpenSettings?: () => void;
   onLeaveRoom: () => void;
 }
 
 export function RoomHeader({
   roomCode,
+  connectionStatus,
   participants,
   copiedCode,
   copiedLink,
@@ -29,6 +44,7 @@ export function RoomHeader({
   onCopyCode,
   onCopyLink,
   onOpenSas,
+  onOpenSettings,
   onLeaveRoom,
 }: RoomHeaderProps) {
   const { locale, setLocale, t } = useI18n();
@@ -38,8 +54,39 @@ export function RoomHeader({
 
   const isDark = theme === 'dark';
   const themeAriaLabel = isDark ? t.theme.switchToLight : t.theme.switchToDark;
-  const peerPresent = participants.length >= 2;
-  const presenceLabel = peerPresent ? t.room.twoPeopleOnline : t.room.waitingForSomeone;
+  const onlineCount = participants.filter((p) => p.online).length;
+  const peerPresent = onlineCount >= 2;
+  const isConnecting = connectionStatus === 'connecting';
+  const isOnline = !isConnecting && (connectionStatus === 'connected' ? peerPresent : peerPresent);
+  const presenceLabel = isConnecting
+    ? t.entry.connecting
+    : peerPresent
+      ? t.room.twoPeopleOnline
+      : t.room.waitingForSomeone;
+
+  const statusBadge = isConnecting
+    ? {
+        dotClass: 'bg-indigo-400 animate-pulse',
+        pillClass:
+          'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-500/30',
+        label: t.entry.connecting,
+        key: 'connecting',
+      }
+    : isOnline
+      ? {
+          dotClass: 'bg-[#22C55E]',
+          pillClass:
+            'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-500/30',
+          label: t.room.statusOnline,
+          key: 'online',
+        }
+      : {
+          dotClass: 'bg-amber-400 animate-pulse',
+          pillClass:
+            'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-200/80 dark:border-amber-500/30',
+          label: t.room.statusWaiting,
+          key: 'waiting',
+        };
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -88,12 +135,20 @@ export function RoomHeader({
             )}
           </button>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+        <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 mt-0.5 flex-wrap">
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className={`h-2 w-2 rounded-full ${statusBadge.dotClass}`}
+              aria-hidden="true"
+            />
+            <span>{presenceLabel}</span>
+          </span>
           <span
-            className={`h-2 w-2 rounded-full ${peerPresent ? 'bg-[#22C55E]' : 'bg-amber-400'}`}
-            aria-hidden="true"
-          />
-          <span>{presenceLabel}</span>
+            data-connection-status={statusBadge.key}
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none ${statusBadge.pillClass}`}
+          >
+            {statusBadge.label}
+          </span>
         </div>
       </div>
 
@@ -214,6 +269,21 @@ export function RoomHeader({
                 <Link2 className="h-3.5 w-3.5 text-[#5B3DF5] dark:text-[#818CF8]" aria-hidden="true" />
                 <span>{copiedLink ? t.room.linkCopied : t.room.copyLink}</span>
               </button>
+
+              {onOpenSettings && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenSettings();
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-[#2B2F45] transition cursor-pointer text-left"
+                >
+                  <Settings className="h-3.5 w-3.5 text-slate-500 dark:text-slate-300" aria-hidden="true" />
+                  <span>{t.room.privacyAndMediaSettings}</span>
+                </button>
+              )}
 
               <button
                 type="button"

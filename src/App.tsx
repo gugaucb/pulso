@@ -56,13 +56,16 @@ function AppContent({
     if (participant.id === session.localParticipant?.id) {
       return {
         ...participant,
-        videoEnabled: videoCall.isCallActive && videoCall.snapshot.cameraEnabled,
+        videoEnabled:
+          Boolean(participant.videoEnabled) ||
+          (videoCall.isCallActive && videoCall.snapshot.cameraEnabled),
       };
     }
     return {
       ...participant,
       videoEnabled:
-        videoCall.snapshot.remoteInCall && !videoCall.snapshot.remoteCameraOff,
+        Boolean(participant.videoEnabled) ||
+        (videoCall.snapshot.remoteInCall && !videoCall.snapshot.remoteCameraOff),
     };
   });
 
@@ -83,15 +86,18 @@ function AppContent({
         <RoomScreen
           roomCode={session.roomCode}
           inviteUrl={session.inviteUrl ?? session.roomCode}
+          connectionStatus={session.status}
           isHost={session.isHost}
           localParticipant={session.localParticipant}
           participants={participantsWithVideo}
           messages={session.messages}
           videoCall={videoCall}
+          typingParticipantName={session.typingParticipantName}
           sasCode={session.sasCode}
           e2eeReady={session.e2eeReady}
           hasLinkSecret={session.hasLinkSecret}
           onSendMessage={session.sendMessage}
+          onTypingChange={session.setTyping}
           onLeaveRoom={session.leaveRoom}
         />
       ) : (
