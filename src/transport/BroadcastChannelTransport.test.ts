@@ -143,4 +143,34 @@ describe('BroadcastChannelTransport', () => {
     host.dispose();
     guest.dispose();
   });
+
+  it('propagates room_expired symmetrically when either Guest or Host calls expireRoom', async () => {
+    const channelFactory = createFakeBroadcastChannelFactory();
+    const host = new BroadcastChannelTransport({ channelFactory, joinTimeoutMs: 50 });
+    const guest = new BroadcastChannelTransport({ channelFactory, joinTimeoutMs: 50 });
+
+    const hostEvents: TransportEvent[] = [];
+    const guestEvents: TransportEvent[] = [];
+
+    host.subscribe((e) => hostEvents.push(e));
+    guest.subscribe((e) => guestEvents.push(e));
+
+    await host.createRoom({
+      roomCode: 'X9K2-P7M4',
+      displayName: 'Ana',
+      mode: 'normal',
+    });
+
+    await guest.joinRoom({
+      roomCode: 'X9K2-P7M4',
+      displayName: 'João',
+    });
+
+    await guest.expireRoom();
+
+    expect(hostEvents.some((e) => e.type === 'room_expired')).toBe(true);
+
+    host.dispose();
+    guest.dispose();
+  });
 });

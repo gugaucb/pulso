@@ -374,6 +374,16 @@ export class BroadcastChannelTransport implements RoomTransport {
     this.resetRoomState();
   }
 
+  async expireRoom(): Promise<void> {
+    if (this.channel && this.localParticipant) {
+      this.channel.postMessage({
+        kind: 'room_expired',
+        senderId: this.localParticipant.id,
+      } satisfies WireMessage);
+    }
+    this.resetRoomState();
+  }
+
   async sendEncryptedMessage(envelope: EncryptedEnvelope): Promise<void> {
     if (!this.channel || !this.localParticipant) return;
     this.channel.postMessage({

@@ -1,11 +1,11 @@
 import {
-  useEffect,
   useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
 import { Paperclip, Send, Smile } from 'lucide-react';
+import { useDismissable } from '../hooks/useDismissable';
 import { useI18n } from '../i18n';
 
 const COMMON_EMOJIS = ['😀', '😂', '👍', '❤️', '🙏', '🔥', '🎉', '👌', '🤔', '😅', '🚀', '🔒'] as const;
@@ -24,33 +24,10 @@ export function MessageComposer({ onSendMessage, onTypingChange }: MessageCompos
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const controlsContainerRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!emojiOpen && !attachmentNoticeOpen) return;
-
-    const handlePointerDown = (event: MouseEvent) => {
-      if (
-        controlsContainerRef.current &&
-        !controlsContainerRef.current.contains(event.target as Node)
-      ) {
-        setEmojiOpen(false);
-        setAttachmentNoticeOpen(false);
-      }
-    };
-
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setEmojiOpen(false);
-        setAttachmentNoticeOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [attachmentNoticeOpen, emojiOpen]);
+  useDismissable(emojiOpen || attachmentNoticeOpen, controlsContainerRef, () => {
+    setEmojiOpen(false);
+    setAttachmentNoticeOpen(false);
+  });
 
   const submitCurrentDraft = async () => {
     const trimmed = draft.trim();

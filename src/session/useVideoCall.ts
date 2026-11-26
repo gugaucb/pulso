@@ -38,6 +38,7 @@ export interface VideoCallController {
   toggleScreenShare: () => Promise<void>;
   selectCamera: (deviceId: string) => Promise<void>;
   selectMicrophone: (deviceId: string) => Promise<void>;
+  refreshDevices: () => Promise<void>;
   setLayout: (layout: CallLayout) => void;
   setFocusChatOpen: (open: boolean) => void;
   dismissNotice: (kind: RemoteCallNoticeKind) => void;
@@ -236,6 +237,12 @@ export function useVideoCall({
     [isTorMode],
   );
 
+  const refreshDevices = useCallback(async () => {
+    const mediaPort = mediaPortRef.current;
+    if (isTorMode || !isInRoom || !mediaPort?.refreshDevices) return;
+    await mediaPort.refreshDevices();
+  }, [isInRoom, isTorMode]);
+
   const dismissNotice = useCallback((kind: RemoteCallNoticeKind) => {
     setActiveNotices((prev) => prev.filter((item) => item !== kind));
   }, []);
@@ -266,6 +273,7 @@ export function useVideoCall({
       toggleScreenShare,
       selectCamera,
       selectMicrophone,
+      refreshDevices,
       setLayout,
       setFocusChatOpen,
       dismissNotice,
@@ -285,6 +293,7 @@ export function useVideoCall({
       layout,
       openPreview,
       previewOpen,
+      refreshDevices,
       selectCamera,
       selectMicrophone,
       snapshot,

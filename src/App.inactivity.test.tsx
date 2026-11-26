@@ -90,7 +90,7 @@ describe('PULSO Ticket 05: Inactivity timer and irreversible purge', () => {
     expect(within(guest.getByLabelText(/barra lateral da sala/i)).getByText(/expira em 49:|expira em 50:/i)).toBeInTheDocument();
 
     // Host sends an Ephemeral Message -> resets timer on BOTH Host and Guest back to 1h
-    await user.type(host.getByLabelText(/mensagem efêmera/i), 'Olá!{enter}');
+    await user.type(host.getByLabelText(/^mensagem efêmera$/i), 'Olá!{enter}');
     await waitFor(() => {
       expect(guest.getByText('Olá!')).toBeInTheDocument();
     });
@@ -106,7 +106,7 @@ describe('PULSO Ticket 05: Inactivity timer and irreversible purge', () => {
     expect(within(guest.getByRole('banner')).getByText(/expira em 34:|expira em 35:/i)).toBeInTheDocument();
 
     // Guest sends an Ephemeral Message -> resets BOTH back to 1h
-    await user.type(guest.getByLabelText(/mensagem efêmera/i), 'Recebido!{enter}');
+    await user.type(guest.getByLabelText(/^mensagem efêmera$/i), 'Recebido!{enter}');
     await waitFor(() => {
       expect(host.getByText('Recebido!')).toBeInTheDocument();
     });
@@ -298,8 +298,8 @@ describe('PULSO Ticket 05: Inactivity timer and irreversible purge', () => {
     });
 
     // Exchange sensitive Ephemeral Messages
-    await user.type(host.getByLabelText(/mensagem efêmera/i), 'Segredo confidencial 1{enter}');
-    await user.type(guest.getByLabelText(/mensagem efêmera/i), 'Resposta confidencial 2{enter}');
+    await user.type(host.getByLabelText(/^mensagem efêmera$/i), 'Segredo confidencial 1{enter}');
+    await user.type(guest.getByLabelText(/^mensagem efêmera$/i), 'Resposta confidencial 2{enter}');
 
     await waitFor(() => {
       expect(host.getByText('Resposta confidencial 2')).toBeInTheDocument();
@@ -377,5 +377,68 @@ describe('PULSO Ticket 05: Inactivity timer and irreversible purge', () => {
     });
     expect(host.getByText(/inactivity timer reached zero/i)).toBeInTheDocument();
     expect(host.getByRole('button', { name: /back to start/i })).toBeInTheDocument();
+  });
+
+  it('transitions both Host and Guest symmetrically to ExpiredRoomScreen even if Guest timer fires first', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(1_700_000_000_000);
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const hub = new InMemoryTransportHub();
+
+    const hostView = render(
+      <App
+        transport={hub.createTransport()}
+        inactivityDurationMs={60_000}
+        initialLocale="pt-br"
+      />,
+    );
+    const host = within(hostView.container);
+
+    await user.click(host.getByRole('button', { name: /criar nova sala/i }));
+    await waitFor(() => {
+      expect(host.getByText(/sua sala foi criada!/i)).toBeInTheDocument();
+    });
+
+    const createdCode = host.getAllByText(ROOM_CODE_REGEX)[0].textContent!.trim();
+    const realNow = Date.now.bind(Date);
+    const hostStart = realNow();
+
+    // Advance 300ms, then simulate Guest clock +2500ms ahead when Guest joins
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 2500);
+
+    const guestView = render(
+      <App
+        transport={hub.createTransport()}
+        inactivityDurationMs={60_000}
+        initialLocale="pt-br"
+      />,
+    );
+    const guest = within(guestView.container);
+
+    await user.type(guest.getByLabelText(/código da sala/i), createdCode);
+    await user.click(guest.getByRole('button', { name: /entrar na sala/i }));
+
+    await waitFor(() => {
+      expect(host.getAllByText(/2 pessoas online/i).length).toBeGreaterThan(0);
+    });
+
+    // Advance to hostStart + 57.4s (Host's last tick at +57.0s saw +59.5s < 60s; Guest's expireTimeout is at +57.5s)
+    const to57400 = hostStart + 57_400 - realNow();
+    await act(async () => {
+      vi.advanceTimersByTime(to57400);
+    });
+    expect(guest.queryByRole('heading', { name: /sala encerrada/i })).not.toBeInTheDocument();
+    expect(host.queryByRole('heading', { name: /sala encerrada/i })).not.toBeInTheDocument();
+
+    // Advance 200ms to hostStart + 57.6s -> Guest's expireTimeout fires (Host's next tick isn't until +58.0s)
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(guest.getByRole('heading', { name: /sala encerrada/i })).toBeInTheDocument();
+    expect(host.getByRole('heading', { name: /sala encerrada/i })).toBeInTheDocument();
   });
 });

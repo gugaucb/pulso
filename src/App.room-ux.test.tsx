@@ -31,6 +31,10 @@ describe('PULSO Ticket 04: Slack-style Room UX', () => {
       createRoom: (p) => baseHostTransport.createRoom(p),
       joinRoom: (p) => baseHostTransport.joinRoom(p),
       leaveRoom: () => baseHostTransport.leaveRoom(),
+      expireRoom: () =>
+        baseHostTransport.expireRoom
+          ? baseHostTransport.expireRoom()
+          : baseHostTransport.leaveRoom(),
       sendEncryptedMessage: (e) => baseHostTransport.sendEncryptedMessage(e),
       sendKeyExchange: (k, opts) => baseHostTransport.sendKeyExchange(k, opts),
       setTyping: (t) => baseHostTransport.setTyping(t),
@@ -156,7 +160,7 @@ describe('PULSO Ticket 04: Slack-style Room UX', () => {
     });
 
     // Guest starts typing -> Host sees "João Silva está digitando…"
-    const guestComposer = guest.getByLabelText(/mensagem efêmera/i);
+    const guestComposer = guest.getByLabelText(/^mensagem efêmera$/i);
     await user.type(guestComposer, 'Oi');
 
     await waitFor(() => {
@@ -211,8 +215,8 @@ describe('PULSO Ticket 04: Slack-style Room UX', () => {
     const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView');
 
     // Exchange initial messages while at bottom
-    await user.type(host.getByLabelText(/mensagem efêmera/i), 'Primeira mensagem{enter}');
-    await user.type(guest.getByLabelText(/mensagem efêmera/i), 'Segunda mensagem{enter}');
+    await user.type(host.getByLabelText(/^mensagem efêmera$/i), 'Primeira mensagem{enter}');
+    await user.type(guest.getByLabelText(/^mensagem efêmera$/i), 'Segunda mensagem{enter}');
 
     await waitFor(() => {
       expect(host.getByText('Segunda mensagem')).toBeInTheDocument();
@@ -223,7 +227,7 @@ describe('PULSO Ticket 04: Slack-style Room UX', () => {
       scrollSpy.mock.contexts.filter((ctx) => ctx instanceof Node && hostLog.contains(ctx)).length;
 
     expect(countHostScrollCalls()).toBeGreaterThan(0);
-    expect(host.queryByRole('button', { name: /ir para a última mensagem/i })).not.toBeInTheDocument();
+    expect(host.queryByRole('button', { name: /ir para a última mensagem efêmera/i })).not.toBeInTheDocument();
 
     // Verify entrance animation and visual distinction between own and peer messages
     const articles = within(hostLog).getAllByRole('article');
@@ -237,24 +241,24 @@ describe('PULSO Ticket 04: Slack-style Room UX', () => {
     Object.defineProperty(hostLog, 'scrollTop', { value: 100, writable: true, configurable: true });
     fireEvent.scroll(hostLog);
 
-    const jumpBtn = await host.findByRole('button', { name: /ir para a última mensagem/i });
+    const jumpBtn = await host.findByRole('button', { name: /ir para a última mensagem efêmera/i });
     expect(jumpBtn.className).toContain('bg-[#5B3DF5]');
 
     const scrollCallsBeforeIncoming = countHostScrollCalls();
 
     // Guest sends a new message while Host is scrolled up -> Host must NOT auto-scroll
-    await user.type(guest.getByLabelText(/mensagem efêmera/i), 'Nova mensagem enquanto leio{enter}');
+    await user.type(guest.getByLabelText(/^mensagem efêmera$/i), 'Nova mensagem enquanto leio{enter}');
     await waitFor(() => {
       expect(host.getByText('Nova mensagem enquanto leio')).toBeInTheDocument();
     });
 
     expect(countHostScrollCalls()).toBe(scrollCallsBeforeIncoming);
-    expect(host.getByRole('button', { name: /ir para a última mensagem/i })).toBeInTheDocument();
+    expect(host.getByRole('button', { name: /ir para a última mensagem efêmera/i })).toBeInTheDocument();
 
     // Clicking the floating pill scrolls smoothly to bottom and hides the pill
     await user.click(jumpBtn);
     expect(countHostScrollCalls()).toBeGreaterThan(scrollCallsBeforeIncoming);
-    expect(host.queryByRole('button', { name: /ir para a última mensagem/i })).not.toBeInTheDocument();
+    expect(host.queryByRole('button', { name: /ir para a última mensagem efêmera/i })).not.toBeInTheDocument();
   });
 
   it('supports Shift+Enter newlines, accessible emoji picker insertion, and ephemeral attachment notice in MessageComposer', async () => {
@@ -280,7 +284,7 @@ describe('PULSO Ticket 04: Slack-style Room UX', () => {
       expect(host.getAllByText(/2 pessoas online/i).length).toBeGreaterThan(0);
     });
 
-    const hostComposer = host.getByLabelText(/mensagem efêmera/i) as HTMLTextAreaElement;
+    const hostComposer = host.getByLabelText(/^mensagem efêmera$/i) as HTMLTextAreaElement;
 
     // Shift+Enter inserts a newline without sending
     await user.type(hostComposer, 'Linha 1{Shift>}{Enter}{/Shift}Linha 2');
@@ -356,7 +360,7 @@ describe('PULSO Ticket 04: Slack-style Room UX', () => {
     });
 
     // Exchange a message so volatile state has messages
-    await user.type(guest.getByLabelText(/mensagem efêmera/i), 'Segredo efêmero{enter}');
+    await user.type(guest.getByLabelText(/^mensagem efêmera$/i), 'Segredo efêmero{enter}');
     await waitFor(() => {
       expect(guest.getByText('Segredo efêmero')).toBeInTheDocument();
       expect(host.getByText('Segredo efêmero')).toBeInTheDocument();

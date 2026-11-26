@@ -105,6 +105,20 @@ export class FakeMediaPort implements MediaPort {
     return null;
   }
 
+  async refreshDevices(): Promise<void> {
+    if (this.checkDeviceAvailability()) {
+      return;
+    }
+    this.updateSnapshot({
+      cameras: this.cameras,
+      microphones: this.microphones,
+      selectedCameraId:
+        this.snapshot.selectedCameraId ?? this.cameras[0]?.deviceId ?? null,
+      selectedMicrophoneId:
+        this.snapshot.selectedMicrophoneId ?? this.microphones[0]?.deviceId ?? null,
+    });
+  }
+
   async startPreview(options?: {
     cameraId?: string | null;
     microphoneId?: string | null;

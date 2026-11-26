@@ -82,6 +82,7 @@ export class BrowserMediaPort implements MediaPort {
       const cameras: MediaDeviceOption[] = [];
       const microphones: MediaDeviceOption[] = [];
       for (const device of devices) {
+        if (!device.deviceId) continue;
         if (device.kind === 'videoinput') {
           cameras.push({
             deviceId: device.deviceId,
@@ -100,6 +101,17 @@ export class BrowserMediaPort implements MediaPort {
     } catch {
       return { cameras: [], microphones: [] };
     }
+  }
+
+  async refreshDevices(): Promise<void> {
+    const { cameras, microphones } = await this.enumerateMediaDevices();
+    this.updateSnapshot({
+      cameras,
+      microphones,
+      selectedCameraId: this.snapshot.selectedCameraId ?? cameras[0]?.deviceId ?? null,
+      selectedMicrophoneId:
+        this.snapshot.selectedMicrophoneId ?? microphones[0]?.deviceId ?? null,
+    });
   }
 
   private startAudioMeter(stream: MediaStream): void {
@@ -288,7 +300,7 @@ export class BrowserMediaPort implements MediaPort {
     if (typeof RTCPeerConnection === 'undefined') return null;
 
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      iceServers: [],
     });
 
     pc.onicecandidate = (event) => {

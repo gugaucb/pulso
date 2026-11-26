@@ -105,7 +105,10 @@ export function EntryScreen({
       <section className="w-full max-w-md bg-white dark:bg-[#232638] rounded-2xl shadow-lg border border-slate-200/80 dark:border-[#2E3248] p-5 sm:p-8 transition-colors">
         <div className="flex flex-col items-center text-center mb-6">
           <PulsoLogo variant={isDark ? 'dark' : 'light'} size="md" />
-          <h1 className="mt-5 text-2xl font-bold text-[#111827] dark:text-slate-50 tracking-tight">
+          <p className="mt-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+            {t.brand.slogan}
+          </p>
+          <h1 className="mt-4 text-2xl font-bold text-[#111827] dark:text-slate-50 tracking-tight">
             {t.entry.title}
           </h1>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
@@ -127,7 +130,6 @@ export function EntryScreen({
               inputMode="text"
               autoComplete="off"
               spellCheck={false}
-              maxLength={9}
               placeholder={t.entry.roomCodePlaceholder}
               value={roomCodeInput}
               onChange={(e) => handleRoomCodeChange(e.target.value)}

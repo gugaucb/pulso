@@ -153,6 +153,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   const handshakeStartedRef = useRef(false);
   const sendChainRef = useRef<Promise<void>>(Promise.resolve());
   const receiveChainRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingOutboundQueueRef = useRef<Array<{ text: string }>>([]);
   const autoJoinAttemptedRef = useRef(false);
   const initialInviteModeRef = useRef<RoomMode>('normal');
   const initialOnionRef = useRef<string | null>(null);
@@ -209,6 +210,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     (nextStatus: ConnectionStatus, nextError: RoomErrorCode | null = null) => {
       clearTypingTimers();
       resetCryptoState();
+      pendingOutboundQueueRef.current = [];
       secretKeyRef.current = undefined;
       roomCodeRef.current = null;
       localParticipantRef.current = null;
@@ -255,6 +257,37 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
         setSasCode(derivedSas);
         setE2eeReady(true);
         handshakeReadyRef.current?.resolve();
+
+        const queued = pendingOutboundQueueRef.current.splice(0);
+        if (queued.length > 0) {
+          sendChainRef.current = sendChainRef.current
+            .then(async () => {
+              for (const item of queued) {
+                if (
+                  sessionGenRef.current !== gen ||
+                  e2eeRef.current !== session ||
+                  !session.isReady()
+                ) {
+                  break;
+                }
+                const currentCode = roomCodeRef.current;
+                const sender = localParticipantRef.current;
+                if (!currentCode || !sender) break;
+
+                const envelope = await session.encrypt(item.text, {
+                  roomCode: currentCode,
+                  senderId: sender.id,
+                  senderName: sender.displayName,
+                  senderRole: sender.role,
+                });
+                if (sessionGenRef.current !== gen) break;
+
+                await transport.sendEncryptedMessage(envelope);
+                await transport.notifyActivity();
+              }
+            })
+            .catch(() => {});
+        }
       } catch {
         handshakeStartedRef.current = false;
       }
@@ -297,6 +330,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     const unsubscribe = transport.subscribe((event: TransportEvent) => {
       switch (event.type) {
         case 'room_joined': {
+          pendingOutboundQueueRef.current = [];
           roomCodeRef.current = event.roomCode;
           localParticipantRef.current = event.participant;
 
@@ -458,6 +492,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           break;
         }
         case 'room_error': {
+          clearBrowserRoomUrl();
           wipeVolatileState('error', event.code);
           break;
         }
@@ -468,6 +503,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       unsubscribe();
       clearTypingTimers();
       resetCryptoState();
+      pendingOutboundQueueRef.current = [];
       secretKeyRef.current = undefined;
       if (ownsTransportRef.current) {
         transport.dispose();
@@ -591,7 +627,6 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       const text = rawText.trim();
       const session = e2eeRef.current;
       const gen = sessionGenRef.current;
-      const handshake = handshakeReadyRef.current;
       const currentCode = roomCodeRef.current;
       const sender = localParticipantRef.current;
 
@@ -601,10 +636,24 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
 
       setTyping(false);
 
+      if (!session.isReady()) {
+        const localMsg: EphemeralMessage = {
+          id: createMessageId(),
+          senderId: sender.id,
+          senderName: sender.displayName,
+          senderRole: sender.role,
+          text,
+          createdAt: Date.now(),
+        };
+        setMessages((prev) => [...prev, localMsg]);
+        pendingOutboundQueueRef.current.push({ text });
+        return;
+      }
+
       const task = sendChainRef.current.then(async () => {
-        if (sessionGenRef.current !== gen || e2eeRef.current !== session) return;
-        await handshake?.promise;
-        if (sessionGenRef.current !== gen || !session.isReady()) return;
+        if (sessionGenRef.current !== gen || e2eeRef.current !== session || !session.isReady()) {
+          return;
+        }
 
         const envelope = await session.encrypt(text, {
           roomCode: currentCode,
@@ -642,7 +691,11 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
     }
     clearBrowserRoomUrl();
     wipeVolatileState('expired', 'room_expired');
-    await transport.leaveRoom();
+    if (transport.expireRoom) {
+      await transport.expireRoom();
+    } else {
+      await transport.leaveRoom();
+    }
   }, [transport, wipeVolatileState]);
 
   useEffect(() => {

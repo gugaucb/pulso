@@ -158,6 +158,22 @@ export class InMemoryTransportHub {
   }
 
   /** @internal */
+  _expireRoom(client: InMemoryClient): void {
+    const code = client.currentRoomCode;
+    if (!code) return;
+    const room = this.rooms.get(code);
+    client._clearRoom();
+    if (!room) return;
+
+    this.rooms.delete(code);
+    const peer = room.host === client ? room.guest : room.guest === client ? room.host : null;
+    if (peer) {
+      peer._clearRoom();
+      peer._emit({ type: 'room_expired' });
+    }
+  }
+
+  /** @internal */
   _forwardToPeer(sender: InMemoryClient, event: TransportEvent): void {
     const code = sender.currentRoomCode;
     if (!code) return;
@@ -242,6 +258,10 @@ class InMemoryClient implements RoomTransport {
 
   async leaveRoom(): Promise<void> {
     this.hub._leaveRoom(this);
+  }
+
+  async expireRoom(): Promise<void> {
+    this.hub._expireRoom(this);
   }
 
   async sendEncryptedMessage(envelope: EncryptedEnvelope): Promise<void> {

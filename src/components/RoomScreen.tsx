@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { AlertTriangle, ChevronLeft, Info, MessageSquare, VideoOff, X } from 'lucide-react';
 import type { ConnectionStatus, EphemeralMessage, Participant, RoomMode } from '../domain/types';
+import { useCopyFeedback } from '../hooks/useCopyFeedback';
+import { useModalA11y } from '../hooks/useModalA11y';
 import { useI18n } from '../i18n';
 import type { MediaErrorCode } from '../media/MediaPort';
 import {
@@ -8,7 +10,6 @@ import {
   type InactivityAlertLevel,
 } from '../session/inactivityTimer';
 import type { RemoteCallNoticeKind, VideoCallController } from '../session/useVideoCall';
-import { copyToClipboard } from '../utils/clipboard';
 import { MessageComposer } from './MessageComposer';
 import { MessageList } from './MessageList';
 import { VideoPreviewModal } from './modals/VideoPreviewModal';
@@ -70,9 +71,9 @@ export function RoomScreen({
 }: RoomScreenProps) {
   const { t } = useI18n();
   const isTorMode = roomMode === 'tor';
-  const [copiedCode, setCopiedCode] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
-  const [copiedOnion, setCopiedOnion] = useState(false);
+  const codeCopy = useCopyFeedback();
+  const linkCopy = useCopyFeedback();
+  const onionCopy = useCopyFeedback();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileVideoChatOpen, setMobileVideoChatOpen] = useState(false);
@@ -81,64 +82,29 @@ export function RoomScreen({
   const [liveAnnouncement, setLiveAnnouncement] = useState('');
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [sasModalOpen, setSasModalOpen] = useState(false);
-  const codeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const linkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mobileSidebarButtonRef = useRef<HTMLButtonElement | null>(null);
   const mobileSidebarCloseRef = useRef<HTMLButtonElement | null>(null);
   const restoreDrawerFocusRef = useRef(true);
 
-  useEffect(() => {
-    return () => {
-      if (codeTimerRef.current) clearTimeout(codeTimerRef.current);
-      if (linkTimerRef.current) clearTimeout(linkTimerRef.current);
-      if (onionTimerRef.current) clearTimeout(onionTimerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!mobileSidebarOpen) return;
+  if (mobileSidebarOpen) {
     restoreDrawerFocusRef.current = true;
-    const raf = requestAnimationFrame(() => {
-      mobileSidebarCloseRef.current?.focus();
-    });
+  }
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setMobileSidebarOpen(false);
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      cancelAnimationFrame(raf);
-      document.removeEventListener('keydown', handleKeyDown);
-      if (restoreDrawerFocusRef.current) {
-        mobileSidebarButtonRef.current?.focus();
-      }
-    };
-  }, [mobileSidebarOpen]);
+  useModalA11y(
+    mobileSidebarOpen,
+    mobileSidebarCloseRef,
+    () => setMobileSidebarOpen(false),
+    {
+      preventEscapeDefault: true,
+      shouldRestoreFocus: () => restoreDrawerFocusRef.current,
+    },
+  );
 
-  const handleCopyCode = () => {
-    void copyToClipboard(roomCode);
-    setCopiedCode(true);
-    if (codeTimerRef.current) clearTimeout(codeTimerRef.current);
-    codeTimerRef.current = setTimeout(() => setCopiedCode(false), 2000);
-  };
-
-  const handleCopyLink = () => {
-    void copyToClipboard(inviteUrl);
-    setCopiedLink(true);
-    if (linkTimerRef.current) clearTimeout(linkTimerRef.current);
-    linkTimerRef.current = setTimeout(() => setCopiedLink(false), 2000);
-  };
-
+  const handleCopyCode = () => codeCopy.triggerCopy(roomCode);
+  const handleCopyLink = () => linkCopy.triggerCopy(inviteUrl);
   const handleCopyOnion = () => {
     if (!onionAddress) return;
-    void copyToClipboard(onionAddress);
-    setCopiedOnion(true);
-    if (onionTimerRef.current) clearTimeout(onionTimerRef.current);
-    onionTimerRef.current = setTimeout(() => setCopiedOnion(false), 2000);
+    onionCopy.triggerCopy(onionAddress);
   };
 
   const remoteParticipant = participants.find((p) => p.id !== localParticipant.id);
@@ -168,6 +134,9 @@ export function RoomScreen({
       onOpenSettings();
       return;
     }
+    if (!isTorMode && videoCall) {
+      void videoCall.refreshDevices();
+    }
     setSettingsOpen(true);
   };
 
@@ -185,9 +154,9 @@ export function RoomScreen({
           localParticipantId={localParticipant.id}
           messages={messages}
           typingParticipantName={typingParticipantName}
-          copiedCode={copiedCode}
-          copiedLink={copiedLink}
-          copiedOnion={copiedOnion}
+          copiedCode={codeCopy.copied}
+          copiedLink={linkCopy.copied}
+          copiedOnion={onionCopy.copied}
           onCopyCode={handleCopyCode}
           onShareLink={handleCopyLink}
           onCopyOnion={handleCopyOnion}
@@ -210,8 +179,8 @@ export function RoomScreen({
         onionAddress={onionAddress}
         localParticipant={localParticipant}
         participants={participants}
-        copiedCode={copiedCode}
-        copiedLink={copiedLink}
+        copiedCode={codeCopy.copied}
+        copiedLink={linkCopy.copied}
         e2eeReady={e2eeReady}
         inactivityRemainingMs={inactivityRemainingMs}
         inactivityAlertLevel={inactivityAlertLevel}
@@ -229,8 +198,8 @@ export function RoomScreen({
           roomMode={roomMode}
           connectionStatus={connectionStatus}
           participants={participants}
-          copiedCode={copiedCode}
-          copiedLink={copiedLink}
+          copiedCode={codeCopy.copied}
+          copiedLink={linkCopy.copied}
           isCallActive={isCallActive}
           onStartVideoCall={!isTorMode && videoCall ? () => void videoCall.openPreview() : undefined}
           e2eeReady={e2eeReady}
@@ -483,8 +452,8 @@ export function RoomScreen({
               onionAddress={onionAddress}
               localParticipant={localParticipant}
               participants={participants}
-              copiedCode={copiedCode}
-              copiedLink={copiedLink}
+              copiedCode={codeCopy.copied}
+              copiedLink={linkCopy.copied}
               e2eeReady={e2eeReady}
               inactivityRemainingMs={inactivityRemainingMs}
               inactivityAlertLevel={inactivityAlertLevel}
@@ -562,6 +531,12 @@ export function RoomScreen({
         microphones={videoCall?.snapshot.microphones}
         selectedCameraId={videoCall?.snapshot.selectedCameraId}
         selectedMicrophoneId={videoCall?.snapshot.selectedMicrophoneId}
+        onSelectCamera={
+          !isTorMode && videoCall ? (id) => void videoCall.selectCamera(id) : undefined
+        }
+        onSelectMicrophone={
+          !isTorMode && videoCall ? (id) => void videoCall.selectMicrophone(id) : undefined
+        }
         onToggleAntiPrintscreen={() => {
           setAntiPrintscreenEnabled((prev) => {
             const next = !prev;

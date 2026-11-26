@@ -59,7 +59,7 @@ describe('Ticket 08: Anti-printscreen, Privacy Settings & Mobile Responsive UX',
   it('activates protective blur curtain on window blur and document visibilitychange, blocks contextmenu and casual selection on messages', async () => {
     const { user, host, guest, hostView } = await setupConnectedRoom();
 
-    await user.type(host.getByLabelText(/mensagem efêmera/i), 'Segredo confidencial{enter}');
+    await user.type(host.getByLabelText(/^mensagem efêmera$/i), 'Segredo confidencial{enter}');
     await waitFor(() => {
       expect(host.getByText('Segredo confidencial')).toBeInTheDocument();
       expect(guest.getByText('Segredo confidencial')).toBeInTheDocument();
@@ -130,16 +130,31 @@ describe('Ticket 08: Anti-printscreen, Privacy Settings & Mobile Responsive UX',
     const dialog = await host.findByRole('dialog', { name: /privacidade/i });
     const modal = within(dialog);
 
-    // Prominent honest disclaimer & sections
+    // Prominent honest disclaimer & sections & brand slogan
+    expect(modal.getByText('Converse. Conecte. Quando quiser.')).toBeInTheDocument();
     expect(
       modal.getByText(/as proteções no navegador são dissuasivas e não impedem capturas nativas/i),
     ).toBeInTheDocument();
     expect(modal.getByText(/dispositivos de mídia/i)).toBeInTheDocument();
     expect(modal.getByText(/idioma e aparência/i)).toBeInTheDocument();
 
+    // Interactive camera and microphone device selectors are populated and selectable in Normal Mode
+    const settingsCameraSelect = modal.getByRole('combobox', {
+      name: /câmera/i,
+    }) as HTMLSelectElement;
+    const settingsMicSelect = modal.getByRole('combobox', {
+      name: /microfone/i,
+    }) as HTMLSelectElement;
+    expect(settingsCameraSelect.options.length).toBeGreaterThanOrEqual(2);
+    expect(settingsMicSelect.options.length).toBeGreaterThanOrEqual(2);
+    await user.selectOptions(settingsCameraSelect, 'fake-cam-2');
+    await user.selectOptions(settingsMicSelect, 'fake-mic-2');
+    expect(settingsCameraSelect.value).toBe('fake-cam-2');
+    expect(settingsMicSelect.value).toBe('fake-mic-2');
+
     // Focus blur shield switch is enabled by default; watermark is disabled by default
     const shieldSwitch = modal.getByRole('switch', {
-      name: /ocultar mensagens ao perder foco da janela/i,
+      name: /ocultar mensagens efêmeras ao perder foco da janela/i,
     });
     const watermarkSwitch = modal.getByRole('switch', {
       name: /exibir marca d’água discreta na sessão/i,
@@ -189,7 +204,7 @@ describe('Ticket 08: Anti-printscreen, Privacy Settings & Mobile Responsive UX',
     );
     const modal2 = within(await host.findByRole('dialog', { name: /privacidade/i }));
     await user.click(
-      modal2.getByRole('switch', { name: /ocultar mensagens ao perder foco da janela/i }),
+      modal2.getByRole('switch', { name: /ocultar mensagens efêmeras ao perder foco da janela/i }),
     );
     await user.click(
       modal2.getByRole('switch', { name: /exibir marca d’água discreta na sessão/i }),
@@ -224,7 +239,7 @@ describe('Ticket 08: Anti-printscreen, Privacy Settings & Mobile Responsive UX',
     entryView.unmount();
 
     // MessageComposer uses safe-area bottom padding
-    const composerForm = host.getByLabelText(/mensagem efêmera/i).closest('form');
+    const composerForm = host.getByLabelText(/^mensagem efêmera$/i).closest('form');
     expect(composerForm?.className).toContain('pb-[max(0.75rem,env(safe-area-inset-bottom))]');
 
     // Mobile drawer toggle button in RoomHeader has proper ARIA state

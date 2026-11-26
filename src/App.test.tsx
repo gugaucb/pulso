@@ -16,6 +16,7 @@ describe('PULSO App integration', () => {
     render(<App transport={hostTransport} initialLocale="pt-br" />);
 
     expect(screen.getByText('PULSO')).toBeInTheDocument();
+    expect(screen.getByText('Converse. Conecte. Quando quiser.')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /entre ou crie uma sala/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/código da sala/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/seu nome/i)).toBeInTheDocument();
@@ -45,6 +46,10 @@ describe('PULSO App integration', () => {
 
     await user.click(shareButton);
     expect(screen.getAllByRole('button', { name: /link copiado!/i }).length).toBeGreaterThan(0);
+
+    // Sidebar "Sobre a sala" also displays brand slogan
+    const sidebar = screen.getByRole('complementary', { name: /barra lateral da sala/i });
+    expect(within(sidebar).getByText('Converse. Conecte. Quando quiser.')).toBeInTheDocument();
   });
 
   it('connects Host and Guest, exchanges ephemeral messages bidirectionally, and blocks a 3rd intruder', async () => {
@@ -84,7 +89,7 @@ describe('PULSO App integration', () => {
     });
 
     // Host sends a message via Enter
-    const hostComposer = host.getByLabelText(/mensagem efêmera/i);
+    const hostComposer = host.getByLabelText(/^mensagem efêmera$/i);
     await user.type(hostComposer, 'Oi! Tudo certo por aqui?{enter}');
 
     await waitFor(() => {
@@ -93,9 +98,9 @@ describe('PULSO App integration', () => {
     });
 
     // Guest replies via send button
-    const guestComposer = guest.getByLabelText(/mensagem efêmera/i);
+    const guestComposer = guest.getByLabelText(/^mensagem efêmera$/i);
     await user.type(guestComposer, 'Perfeito! Vamos conversar.');
-    await user.click(guest.getByRole('button', { name: /enviar mensagem/i }));
+    await user.click(guest.getByRole('button', { name: /enviar mensagem efêmera/i }));
 
     await waitFor(() => {
       expect(host.getByText('Perfeito! Vamos conversar.')).toBeInTheDocument();
@@ -172,5 +177,39 @@ describe('PULSO App integration', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent(/não encontrada/i);
     });
+  });
+
+  it('normalizes pasted Room Code with whitespace and hyphen without maxLength clipping', async () => {
+    const user = userEvent.setup();
+    const hub = new InMemoryTransportHub();
+
+    render(<App transport={hub.createTransport()} initialLocale="pt-br" />);
+
+    const codeInput = screen.getByLabelText(/código da sala/i) as HTMLInputElement;
+    await user.click(codeInput);
+    await user.paste('  a7k9 - m2p4  ');
+
+    expect(codeInput.value).toBe('A7K9-M2P4');
+  });
+
+  it('clears ?room= and #k= from browser URL when auto-join fails with room_error', async () => {
+    const hub = new InMemoryTransportHub();
+    const badInviteUrl = 'https://pulso.example/?room=A7K9-M2P4#k=secret256';
+    window.history.replaceState(null, '', '/?room=A7K9-M2P4#k=secret256');
+
+    render(
+      <App
+        transport={hub.createTransport()}
+        initialUrl={badInviteUrl}
+        initialLocale="pt-br"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/não encontrada/i);
+    });
+
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('');
   });
 });

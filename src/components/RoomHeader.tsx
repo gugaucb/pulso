@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Check,
   Clock,
@@ -17,6 +17,7 @@ import {
   VideoOff,
 } from 'lucide-react';
 import type { ConnectionStatus, Participant, RoomMode } from '../domain/types';
+import { useDismissable } from '../hooks/useDismissable';
 import { LOCALE_OPTIONS, useI18n } from '../i18n';
 import {
   DEFAULT_INACTIVITY_DURATION_MS,
@@ -117,31 +118,7 @@ export function RoomHeader({
           key: 'waiting',
         };
 
-  useEffect(() => {
-    if (!menuOpen) return;
-
-    const handlePointerDown = (event: MouseEvent) => {
-      if (
-        menuContainerRef.current &&
-        !menuContainerRef.current.contains(event.target as Node)
-      ) {
-        setMenuOpen(false);
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [menuOpen]);
+  useDismissable(menuOpen, menuContainerRef, () => setMenuOpen(false));
 
   return (
     <header className="pulso-print-hide shrink-0 bg-white dark:bg-[#1A1C2A] border-b border-slate-200 dark:border-[#2A2D42] px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-3 transition-colors">

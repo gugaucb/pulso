@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { Globe, Mic, Moon, ShieldAlert, ShieldCheck, Sun, Video } from 'lucide-react';
 import type { Locale } from '../../domain/types';
+import { useModalA11y } from '../../hooks/useModalA11y';
 import { LOCALE_OPTIONS, useI18n } from '../../i18n';
 import type { MediaDeviceOption } from '../../media/MediaPort';
 import { useTheme } from '../../theme/ThemeContext';
@@ -14,13 +15,15 @@ interface SettingsModalProps {
   microphones?: MediaDeviceOption[];
   selectedCameraId?: string | null;
   selectedMicrophoneId?: string | null;
+  onSelectCamera?: (deviceId: string) => void;
+  onSelectMicrophone?: (deviceId: string) => void;
   onToggleAntiPrintscreen: () => void;
   onToggleWatermark: () => void;
   onClose: () => void;
 }
 
 /**
- * Privacy, anti-capture, media summary, and appearance settings modal.
+ * Privacy, anti-capture, media device selection, and appearance settings modal.
  * All preferences live strictly in React RAM (zero persistent storage).
  */
 export function SettingsModal({
@@ -32,6 +35,8 @@ export function SettingsModal({
   microphones = [],
   selectedCameraId = null,
   selectedMicrophoneId = null,
+  onSelectCamera,
+  onSelectMicrophone,
   onToggleAntiPrintscreen,
   onToggleWatermark,
   onClose,
@@ -41,28 +46,7 @@ export function SettingsModal({
   const isDark = theme === 'dark';
 
   const firstControlRef = useRef<HTMLButtonElement | null>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
-    const raf = requestAnimationFrame(() => {
-      firstControlRef.current?.focus();
-    });
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      cancelAnimationFrame(raf);
-      document.removeEventListener('keydown', handleKeyDown);
-      previousFocusRef.current?.focus();
-    };
-  }, [onClose, open]);
+  useModalA11y(open, firstControlRef, onClose, { preventEscapeDefault: true });
 
   if (!open) return null;
 
@@ -74,6 +58,7 @@ export function SettingsModal({
     microphones.find((m) => m.deviceId === selectedMicrophoneId)?.label ??
     microphones[0]?.label ??
     null;
+  const canSelectDevices = Boolean(!isTorMode && (onSelectCamera || onSelectMicrophone));
 
   return (
     <div
@@ -98,12 +83,19 @@ export function SettingsModal({
           >
             <ShieldCheck className="h-5 w-5" />
           </span>
-          <h2
-            id="settings-modal-title"
-            className="text-base font-bold text-[#111827] dark:text-slate-50"
-          >
-            {t.privacy.settingsTitle}
-          </h2>
+          <div>
+            <h2
+              id="settings-modal-title"
+              className="text-base font-bold text-[#111827] dark:text-slate-50"
+            >
+              {t.privacy.settingsTitle}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-semibold">{t.brand.name}</span>
+              {' · '}
+              <span>{t.brand.slogan}</span>
+            </p>
+          </div>
         </div>
 
         {/* Privacy & anti-capture switches */}
@@ -165,7 +157,7 @@ export function SettingsModal({
           <p>{t.privacy.honestDisclaimer}</p>
         </div>
 
-        {/* Media device settings summary */}
+        {/* Media device settings */}
         <section className="space-y-2">
           <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             {t.privacy.mediaSectionTitle}
@@ -175,20 +167,69 @@ export function SettingsModal({
               {t.privacy.mediaTorBlocked}
             </div>
           ) : cameras.length > 0 || microphones.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-slate-50 dark:bg-[#1B1D2C] px-3 py-2 text-xs text-slate-700 dark:text-slate-200">
-                <Video className="h-3.5 w-3.5 shrink-0 text-[#5B3DF5] dark:text-[#818CF8]" aria-hidden="true" />
-                <span className="truncate">
-                  {selectedCameraLabel ?? t.videoCall.cameraSelectLabel}
-                </span>
+            canSelectDevices ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label
+                    htmlFor="settings-camera-select"
+                    className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+                  >
+                    <Video className="h-3.5 w-3.5 shrink-0 text-[#5B3DF5] dark:text-[#818CF8]" aria-hidden="true" />
+                    <span>{t.videoCall.cameraSelectLabel}</span>
+                  </label>
+                  <select
+                    id="settings-camera-select"
+                    value={selectedCameraId ?? cameras[0]?.deviceId ?? ''}
+                    onChange={(e) => onSelectCamera?.(e.target.value)}
+                    disabled={cameras.length === 0 || !onSelectCamera}
+                    className="w-full min-h-[44px] sm:min-h-0 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#1B1D2C] px-3 py-2 text-xs text-[#111827] dark:text-slate-100 focus:border-[#5B3DF5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5] cursor-pointer"
+                  >
+                    {cameras.map((cam) => (
+                      <option key={cam.deviceId} value={cam.deviceId}>
+                        {cam.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    htmlFor="settings-mic-select"
+                    className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+                  >
+                    <Mic className="h-3.5 w-3.5 shrink-0 text-[#5B3DF5] dark:text-[#818CF8]" aria-hidden="true" />
+                    <span>{t.videoCall.microphoneSelectLabel}</span>
+                  </label>
+                  <select
+                    id="settings-mic-select"
+                    value={selectedMicrophoneId ?? microphones[0]?.deviceId ?? ''}
+                    onChange={(e) => onSelectMicrophone?.(e.target.value)}
+                    disabled={microphones.length === 0 || !onSelectMicrophone}
+                    className="w-full min-h-[44px] sm:min-h-0 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#1B1D2C] px-3 py-2 text-xs text-[#111827] dark:text-slate-100 focus:border-[#5B3DF5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5] cursor-pointer"
+                  >
+                    {microphones.map((mic) => (
+                      <option key={mic.deviceId} value={mic.deviceId}>
+                        {mic.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-slate-50 dark:bg-[#1B1D2C] px-3 py-2 text-xs text-slate-700 dark:text-slate-200">
-                <Mic className="h-3.5 w-3.5 shrink-0 text-[#5B3DF5] dark:text-[#818CF8]" aria-hidden="true" />
-                <span className="truncate">
-                  {selectedMicLabel ?? t.videoCall.microphoneSelectLabel}
-                </span>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-slate-50 dark:bg-[#1B1D2C] px-3 py-2 text-xs text-slate-700 dark:text-slate-200">
+                  <Video className="h-3.5 w-3.5 shrink-0 text-[#5B3DF5] dark:text-[#818CF8]" aria-hidden="true" />
+                  <span className="truncate">
+                    {selectedCameraLabel ?? t.videoCall.cameraSelectLabel}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-slate-50 dark:bg-[#1B1D2C] px-3 py-2 text-xs text-slate-700 dark:text-slate-200">
+                  <Mic className="h-3.5 w-3.5 shrink-0 text-[#5B3DF5] dark:text-[#818CF8]" aria-hidden="true" />
+                  <span className="truncate">
+                    {selectedMicLabel ?? t.videoCall.microphoneSelectLabel}
+                  </span>
+                </div>
               </div>
-            </div>
+            )
           ) : (
             <div className="rounded-xl border border-slate-200 dark:border-[#2E3248] bg-slate-50 dark:bg-[#1B1D2C] px-3.5 py-2.5 text-xs text-slate-600 dark:text-slate-300">
               {t.privacy.mediaNotCheckedYet}

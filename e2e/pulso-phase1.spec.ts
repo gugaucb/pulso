@@ -77,7 +77,7 @@ test.describe('PULSO Phase 1 E2E Suite', () => {
       const guestPage = await joinWithInviteUrl(context, inviteUrl);
       await expect(hostPage.locator('header').getByText('2 pessoas online')).toBeVisible();
 
-      const guestComposer = guestPage.getByLabel('Mensagem efêmera');
+      const guestComposer = guestPage.getByLabel('Mensagem efêmera', { exact: true });
       await guestComposer.fill('Olá Alice, mensagem cifrada!');
       await expect(hostPage.getByText('Visitante está digitando…')).toBeVisible();
 
@@ -89,7 +89,7 @@ test.describe('PULSO Phase 1 E2E Suite', () => {
         hostPage.getByRole('log', { name: 'Mensagens efêmeras' }).getByText('Olá Alice, mensagem cifrada!'),
       ).toBeVisible();
 
-      const hostComposer = hostPage.getByLabel('Mensagem efêmera');
+      const hostComposer = hostPage.getByLabel('Mensagem efêmera', { exact: true });
       await hostComposer.fill('Oi Visitante! Tudo protegido ponta a ponta.');
       await hostComposer.press('Enter');
 
@@ -256,7 +256,7 @@ test.describe('PULSO Phase 1 E2E Suite', () => {
       const inviteUrl = await createRoomAndGetInviteUrl(hostPage, { displayName: 'Anfitriã' });
       const guestPage = await joinWithInviteUrl(context, inviteUrl);
 
-      const hostComposer = hostPage.getByLabel('Mensagem efêmera');
+      const hostComposer = hostPage.getByLabel('Mensagem efêmera', { exact: true });
       await hostComposer.fill('Conteúdo ultrassecreto da sessão');
       await hostComposer.press('Enter');
 
@@ -319,7 +319,7 @@ test.describe('PULSO Phase 1 E2E Suite', () => {
       await drawer.getByRole('button', { name: 'Fechar painel' }).click();
       await expect(drawer).toHaveCount(0);
 
-      const mobileComposer = mobileHost.getByLabel('Mensagem efêmera');
+      const mobileComposer = mobileHost.getByLabel('Mensagem efêmera', { exact: true });
       await mobileComposer.fill('Mensagem enviada do mobile!');
       await mobileComposer.press('Enter');
 

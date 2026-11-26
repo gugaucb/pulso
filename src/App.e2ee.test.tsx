@@ -17,6 +17,7 @@ function spyTransport(inner: RoomTransport) {
     createRoom: (params) => inner.createRoom(params),
     joinRoom: (params) => inner.joinRoom(params),
     leaveRoom: () => inner.leaveRoom(),
+    expireRoom: () => (inner.expireRoom ? inner.expireRoom() : inner.leaveRoom()),
     sendEncryptedMessage: (envelope) => {
       sentEnvelopes.push(envelope);
       return inner.sendEncryptedMessage(envelope);
@@ -100,7 +101,7 @@ describe('PULSO App E2EE and SAS integration', () => {
 
     // Host sends a sensitive plaintext message
     const secretMessage = 'Encontro secreto às 22h no ponto B';
-    await user.type(host.getByLabelText(/mensagem efêmera/i), `${secretMessage}{enter}`);
+    await user.type(host.getByLabelText(/^mensagem efêmera$/i), `${secretMessage}{enter}`);
 
     await waitFor(() => {
       expect(guest.getByText(secretMessage)).toBeInTheDocument();
@@ -114,7 +115,7 @@ describe('PULSO App E2EE and SAS integration', () => {
 
     // Guest replies and Host decrypts
     const replyMessage = 'Confirmado, sem rastros!';
-    await user.type(guest.getByLabelText(/mensagem efêmera/i), `${replyMessage}{enter}`);
+    await user.type(guest.getByLabelText(/^mensagem efêmera$/i), `${replyMessage}{enter}`);
 
     await waitFor(() => {
       expect(host.getByText(replyMessage)).toBeInTheDocument();
@@ -232,7 +233,7 @@ describe('PULSO App E2EE and SAS integration', () => {
     await user.click(within(guestDialog).getByRole('button', { name: /fechar/i }));
 
     // Exchange message and verify replay on transport is dropped by Guest
-    await user.type(host.getByLabelText(/mensagem efêmera/i), 'Mensagem única{enter}');
+    await user.type(host.getByLabelText(/^mensagem efêmera$/i), 'Mensagem única{enter}');
     await waitFor(() => {
       expect(guest.getByText('Mensagem única')).toBeInTheDocument();
     });
@@ -243,5 +244,103 @@ describe('PULSO App E2EE and SAS integration', () => {
 
     // Still rendered only once (replay dropped)
     expect(guest.getAllByText('Mensagem única')).toHaveLength(1);
+  });
+
+  it('queues messages sent by Host while waiting without locking composer and delivers them encrypted once Guest joins', async () => {
+    const user = userEvent.setup();
+    const hub = new InMemoryTransportHub();
+    const hostSpy = spyTransport(hub.createTransport());
+    const guestSpy = spyTransport(hub.createTransport());
+
+    const hostView = render(<App transport={hostSpy.wrapped} initialLocale="pt-br" />);
+    const host = within(hostView.container);
+
+    await user.click(host.getByRole('button', { name: /criar nova sala/i }));
+    await waitFor(() => {
+      expect(host.getByText(/sua sala foi criada!/i)).toBeInTheDocument();
+    });
+
+    const createdCode = host.getAllByText(ROOM_CODE_REGEX)[0].textContent!.trim();
+    const hostComposer = host.getByLabelText(/^mensagem efêmera$/i) as HTMLTextAreaElement;
+
+    // Host sends two messages while still waiting (before Guest joins)
+    await user.type(hostComposer, 'Mensagem 1 enquanto aguarda{enter}');
+    expect(host.getByText('Mensagem 1 enquanto aguarda')).toBeInTheDocument();
+    expect(hostComposer.value).toBe('');
+
+    // Composer is NOT locked: Host can immediately type and send a second message
+    await user.type(hostComposer, 'Mensagem 2 enquanto aguarda{enter}');
+    expect(host.getByText('Mensagem 2 enquanto aguarda')).toBeInTheDocument();
+    expect(hostComposer.value).toBe('');
+
+    // Nothing leaked over transport before Guest joined
+    expect(hostSpy.sentEnvelopes).toHaveLength(0);
+
+    // Now Guest joins with the Room Code
+    const guestView = render(<App transport={guestSpy.wrapped} initialLocale="pt-br" />);
+    const guest = within(guestView.container);
+
+    await user.type(guest.getByLabelText(/código da sala/i), createdCode);
+    await user.click(guest.getByRole('button', { name: /entrar na sala/i }));
+
+    // Once E2EE handshake completes, Guest receives and decrypts both queued messages
+    await waitFor(() => {
+      expect(guest.getByText('Mensagem 1 enquanto aguarda')).toBeInTheDocument();
+      expect(guest.getByText('Mensagem 2 enquanto aguarda')).toBeInTheDocument();
+    });
+
+    expect(hostSpy.sentEnvelopes).toHaveLength(2);
+    expect(JSON.stringify(hostSpy.sentEnvelopes)).not.toContain('Mensagem 1 enquanto aguarda');
+    expect(JSON.stringify(hostSpy.sentEnvelopes)).not.toContain('Mensagem 2 enquanto aguarda');
+  });
+
+  it('clears queued waiting messages when Host leaves room before Guest joins', async () => {
+    const user = userEvent.setup();
+    const hub = new InMemoryTransportHub();
+    const hostSpy = spyTransport(hub.createTransport());
+
+    const hostView = render(<App transport={hostSpy.wrapped} initialLocale="pt-br" />);
+    const host = within(hostView.container);
+
+    await user.click(host.getByRole('button', { name: /criar nova sala/i }));
+    await waitFor(() => {
+      expect(host.getByText(/sua sala foi criada!/i)).toBeInTheDocument();
+    });
+
+    await user.type(host.getByLabelText(/^mensagem efêmera$/i), 'Rascunho descartado{enter}');
+    expect(host.getByText('Rascunho descartado')).toBeInTheDocument();
+
+    // Host leaves before Guest joins
+    await user.click(within(host.getByRole('banner')).getByRole('button', { name: /sair da sala/i }));
+    await user.click(
+      within(host.getByRole('dialog', { name: /sair da sala\?/i })).getByRole('button', {
+        name: /sair e limpar/i,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(host.getByRole('heading', { name: /entre ou crie uma sala/i })).toBeInTheDocument();
+    });
+
+    // Host creates a new room and Guest joins -> discarded message from previous room is NOT sent
+    await user.click(host.getByRole('button', { name: /criar nova sala/i }));
+    await waitFor(() => {
+      expect(host.getByText(/sua sala foi criada!/i)).toBeInTheDocument();
+    });
+
+    const newCode = host.getAllByText(ROOM_CODE_REGEX)[0].textContent!.trim();
+    const guestView = render(<App transport={hub.createTransport()} initialLocale="pt-br" />);
+    const guest = within(guestView.container);
+
+    await user.type(guest.getByLabelText(/código da sala/i), newCode);
+    await user.click(guest.getByRole('button', { name: /entrar na sala/i }));
+
+    await waitFor(() => {
+      expect(guest.getAllByText(/2 pessoas online/i).length).toBeGreaterThan(0);
+    });
+
+    await new Promise((r) => setTimeout(r, 30));
+    expect(hostSpy.sentEnvelopes).toHaveLength(0);
+    expect(guest.queryByText('Rascunho descartado')).not.toBeInTheDocument();
   });
 });

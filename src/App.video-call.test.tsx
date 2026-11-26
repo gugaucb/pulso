@@ -91,7 +91,7 @@ describe('Video Call flow (Normal Mode)', () => {
     expect(host.getByRole('button', { name: /alternar layout/i })).toBeInTheDocument();
 
     // Ephemeral messages composer remains visible and usable below the video stage
-    const composer = host.getByLabelText(/mensagem efêmera/i);
+    const composer = host.getByLabelText(/^mensagem efêmera$/i);
     await user.type(composer, 'Vendo você bem!{enter}');
     await waitFor(() => {
       expect(host.getByText('Vendo você bem!')).toBeInTheDocument();
@@ -130,7 +130,7 @@ describe('Video Call flow (Normal Mode)', () => {
       'pip',
     );
     // Message composer still visible in pip mode
-    expect(host.getByLabelText(/mensagem efêmera/i)).toBeInTheDocument();
+    expect(host.getByLabelText(/^mensagem efêmera$/i)).toBeInTheDocument();
 
     // Switch to Video Focus (focus) - text panel collapsed by default
     await user.click(host.getByRole('button', { name: /alternar layout/i }));
@@ -139,17 +139,17 @@ describe('Video Call flow (Normal Mode)', () => {
       'data-call-layout',
       'focus',
     );
-    expect(host.queryByLabelText(/mensagem efêmera/i)).not.toBeInTheDocument();
+    expect(host.queryByLabelText(/^mensagem efêmera$/i)).not.toBeInTheDocument();
 
     // Expand collapsible side text panel
-    const showMessagesButton = host.getByRole('button', { name: /mostrar mensagens/i });
+    const showMessagesButton = host.getByRole('button', { name: /mostrar mensagens efêmeras/i });
     expect(showMessagesButton).toHaveAttribute('aria-expanded', 'false');
     await user.click(showMessagesButton);
-    expect(host.getByLabelText(/mensagem efêmera/i)).toBeInTheDocument();
+    expect(host.getByLabelText(/^mensagem efêmera$/i)).toBeInTheDocument();
 
     // Collapse side text panel
-    await user.click(host.getByRole('button', { name: /recolher mensagens/i }));
-    expect(host.queryByLabelText(/mensagem efêmera/i)).not.toBeInTheDocument();
+    await user.click(host.getByRole('button', { name: /recolher mensagens efêmeras/i }));
+    expect(host.queryByLabelText(/^mensagem efêmera$/i)).not.toBeInTheDocument();
 
     // Switch back to Hybrid
     await user.click(host.getByRole('button', { name: /alternar layout/i }));
@@ -253,7 +253,7 @@ describe('Video Call flow (Normal Mode)', () => {
     expect(host.queryByRole('region', { name: /iniciar chamada de vídeo/i })).not.toBeInTheDocument();
 
     // Ephemeral messages work uninterrupted between Host and Guest
-    await user.type(host.getByLabelText(/mensagem efêmera/i), 'Sem câmera, vamos por texto!{enter}');
+    await user.type(host.getByLabelText(/^mensagem efêmera$/i), 'Sem câmera, vamos por texto!{enter}');
     await waitFor(() => {
       expect(guest.getByText('Sem câmera, vamos por texto!')).toBeInTheDocument();
     });
@@ -277,7 +277,7 @@ describe('Video Call flow (Normal Mode)', () => {
     });
 
     // Text chat still works after connection failure
-    await user.type(guest.getByLabelText(/mensagem efêmera/i), 'Recebido por texto!{enter}');
+    await user.type(guest.getByLabelText(/^mensagem efêmera$/i), 'Recebido por texto!{enter}');
     await waitFor(() => {
       expect(host.getByText('Recebido por texto!')).toBeInTheDocument();
     });

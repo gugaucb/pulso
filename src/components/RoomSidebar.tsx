@@ -217,8 +217,11 @@ export function RoomSidebarContent({
         </div>
 
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
             {t.room.aboutRoom}
+          </p>
+          <p className="text-[11px] text-slate-400 mb-2 px-1">
+            {t.brand.slogan}
           </p>
           <div
             data-inactivity-level={inactivityAlertLevel}

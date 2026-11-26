@@ -117,6 +117,10 @@ describe('PULSO Ticket 07: Tor Mode & Strict MediaPort Blocking', () => {
       subscribe: (listener) => baseHostTransport.subscribe(listener),
       joinRoom: (p) => baseHostTransport.joinRoom(p),
       leaveRoom: () => baseHostTransport.leaveRoom(),
+      expireRoom: () =>
+        baseHostTransport.expireRoom
+          ? baseHostTransport.expireRoom()
+          : baseHostTransport.leaveRoom(),
       sendEncryptedMessage: (e) => baseHostTransport.sendEncryptedMessage(e),
       sendKeyExchange: (k, opts) => baseHostTransport.sendKeyExchange(k, opts),
       setTyping: (t) => baseHostTransport.setTyping(t),
@@ -183,7 +187,7 @@ describe('PULSO Ticket 07: Tor Mode & Strict MediaPort Blocking', () => {
     expect(guest.getByText(/safer.*safest/i)).toBeInTheDocument();
 
     // Encrypted ephemeral messaging works normally in Tor Mode
-    const hostComposer = host.getByLabelText(/mensagem efêmera/i);
+    const hostComposer = host.getByLabelText(/^mensagem efêmera$/i);
     await user.type(hostComposer, 'Mensagem cifrada sobre Tor.{enter}');
 
     await waitFor(() => {
@@ -201,6 +205,10 @@ describe('PULSO Ticket 07: Tor Mode & Strict MediaPort Blocking', () => {
       createRoom: (p) => baseHostTransport.createRoom(p),
       joinRoom: (p) => baseHostTransport.joinRoom(p),
       leaveRoom: () => baseHostTransport.leaveRoom(),
+      expireRoom: () =>
+        baseHostTransport.expireRoom
+          ? baseHostTransport.expireRoom()
+          : baseHostTransport.leaveRoom(),
       sendEncryptedMessage: (e) => baseHostTransport.sendEncryptedMessage(e),
       sendKeyExchange: (k, opts) => baseHostTransport.sendKeyExchange(k, opts),
       setTyping: (t) => baseHostTransport.setTyping(t),

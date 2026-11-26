@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { LogOut } from 'lucide-react';
+import { useModalA11y } from '../../hooks/useModalA11y';
 import { useI18n } from '../../i18n';
 
 interface LeaveRoomDialogProps {
@@ -11,27 +12,7 @@ interface LeaveRoomDialogProps {
 export function LeaveRoomDialog({ open, onCancel, onConfirm }: LeaveRoomDialogProps) {
   const { t } = useI18n();
   const cancelBtnRef = useRef<HTMLButtonElement | null>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
-    const raf = requestAnimationFrame(() => {
-      cancelBtnRef.current?.focus();
-    });
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onCancel();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      cancelAnimationFrame(raf);
-      document.removeEventListener('keydown', handleKeyDown);
-      previousFocusRef.current?.focus();
-    };
-  }, [onCancel, open]);
+  useModalA11y(open, cancelBtnRef, onCancel);
 
   if (!open) return null;
 

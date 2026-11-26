@@ -162,7 +162,7 @@ describe('PULSO i18n and Dark Theme integration', () => {
       await user.click(within(menu).getByRole('menuitemradio', { name: /português/i }));
 
       expect(host.getAllByText(/2 pessoas online/i).length).toBeGreaterThan(0);
-      expect(host.getByLabelText(/mensagem efêmera/i)).toBeInTheDocument();
+      expect(host.getByLabelText(/^mensagem efêmera$/i)).toBeInTheDocument();
       expect(host.getByText(/há 2 min/i)).toBeInTheDocument();
 
       // Switch Host locale via ⋯ menu to zh-CN
@@ -207,8 +207,8 @@ describe('PULSO i18n and Dark Theme integration', () => {
     });
 
     // Exchange one own message and one received message to verify bubble styles
-    await user.type(host.getByLabelText(/mensagem efêmera/i), 'Minha mensagem{enter}');
-    await user.type(guest.getByLabelText(/mensagem efêmera/i), 'Mensagem recebida{enter}');
+    await user.type(host.getByLabelText(/^mensagem efêmera$/i), 'Minha mensagem{enter}');
+    await user.type(guest.getByLabelText(/^mensagem efêmera$/i), 'Mensagem recebida{enter}');
 
     await waitFor(() => {
       expect(host.getByText('Minha mensagem')).toBeInTheDocument();

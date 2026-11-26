@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Check,
   LayoutGrid,
@@ -11,6 +11,7 @@ import {
   VideoOff,
 } from 'lucide-react';
 import type { CallLayout } from '../../domain/types';
+import { useDismissable } from '../../hooks/useDismissable';
 import { useI18n } from '../../i18n';
 import { getInitials } from '../../utils/formatters';
 import { MediaVideoElement } from './MediaVideoElement';
@@ -60,28 +61,7 @@ export function VideoCallStage({
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const layoutMenuRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!layoutMenuOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      if (
-        layoutMenuRef.current &&
-        !layoutMenuRef.current.contains(event.target as Node)
-      ) {
-        setLayoutMenuOpen(false);
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setLayoutMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [layoutMenuOpen]);
+  useDismissable(layoutMenuOpen, layoutMenuRef, () => setLayoutMenuOpen(false));
 
   const isPip = layout === 'pip';
   const isFocus = layout === 'focus';

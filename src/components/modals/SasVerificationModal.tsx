@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { Lock, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { useModalA11y } from '../../hooks/useModalA11y';
 import { useI18n } from '../../i18n';
 
 interface SasVerificationModalProps {
@@ -17,27 +18,7 @@ export function SasVerificationModal({
 }: SasVerificationModalProps) {
   const { t } = useI18n();
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
-    const raf = requestAnimationFrame(() => {
-      closeBtnRef.current?.focus();
-    });
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      cancelAnimationFrame(raf);
-      document.removeEventListener('keydown', handleKeyDown);
-      previousFocusRef.current?.focus();
-    };
-  }, [onClose, open]);
+  useModalA11y(open, closeBtnRef, onClose);
 
   if (!open) return null;
 

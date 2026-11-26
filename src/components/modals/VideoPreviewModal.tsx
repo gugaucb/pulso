@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { Mic, MicOff, Video, VideoOff, X } from 'lucide-react';
+import { useModalA11y } from '../../hooks/useModalA11y';
 import { useI18n } from '../../i18n';
 import type { MediaDeviceOption } from '../../media/MediaPort';
 import { getInitials } from '../../utils/formatters';
@@ -44,27 +45,7 @@ export function VideoPreviewModal({
 }: VideoPreviewModalProps) {
   const { t } = useI18n();
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
-    const raf = requestAnimationFrame(() => {
-      closeBtnRef.current?.focus();
-    });
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onCancel();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      cancelAnimationFrame(raf);
-      document.removeEventListener('keydown', handleKeyDown);
-      previousFocusRef.current?.focus();
-    };
-  }, [open, onCancel]);
+  useModalA11y(open, closeBtnRef, onCancel);
 
   if (!open) return null;
 
