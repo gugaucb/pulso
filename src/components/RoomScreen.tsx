@@ -10,6 +10,7 @@ import { MessageList } from './MessageList';
 import { VideoPreviewModal } from './modals/VideoPreviewModal';
 import { RoomHeader } from './RoomHeader';
 import { RoomSidebar } from './RoomSidebar';
+import { SasVerificationModal } from './modals/SasVerificationModal';
 import { VideoCallStage } from './video/VideoCallStage';
 
 interface RoomScreenProps {
@@ -20,6 +21,9 @@ interface RoomScreenProps {
   participants: Participant[];
   messages: EphemeralMessage[];
   videoCall?: VideoCallController;
+  sasCode: string | null;
+  e2eeReady: boolean;
+  hasLinkSecret: boolean;
   onSendMessage: (text: string) => Promise<void>;
   onLeaveRoom: () => Promise<void>;
 }
@@ -32,12 +36,16 @@ export function RoomScreen({
   participants,
   messages,
   videoCall,
+  sasCode,
+  e2eeReady,
+  hasLinkSecret,
   onSendMessage,
   onLeaveRoom,
 }: RoomScreenProps) {
   const { t } = useI18n();
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [sasModalOpen, setSasModalOpen] = useState(false);
   const codeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const linkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -108,8 +116,10 @@ export function RoomScreen({
         participants={participants}
         copiedCode={copiedCode}
         copiedLink={copiedLink}
+        e2eeReady={e2eeReady}
         onCopyCode={handleCopyCode}
         onCopyLink={handleCopyLink}
+        onOpenSas={() => setSasModalOpen(true)}
         onLeaveRoom={() => void onLeaveRoom()}
       />
 
@@ -121,8 +131,10 @@ export function RoomScreen({
           copiedLink={copiedLink}
           isCallActive={isCallActive}
           onStartVideoCall={videoCall ? () => void videoCall.openPreview() : undefined}
+          e2eeReady={e2eeReady}
           onCopyCode={handleCopyCode}
           onCopyLink={handleCopyLink}
+          onOpenSas={() => setSasModalOpen(true)}
           onLeaveRoom={() => void onLeaveRoom()}
         />
 
@@ -297,6 +309,13 @@ export function RoomScreen({
           onCancel={videoCall.closePreview}
         />
       )}
+
+      <SasVerificationModal
+        open={sasModalOpen}
+        sasCode={sasCode}
+        hasLinkSecret={hasLinkSecret}
+        onClose={() => setSasModalOpen(false)}
+      />
     </div>
   );
 }

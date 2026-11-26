@@ -100,6 +100,10 @@ export const en: TranslationDictionary = {
     sasTitle: 'Mutual verification (SAS)',
     sasDescription: 'Compare this visual code with the other participant to confirm there is no intermediary.',
     sasCodeLabel: 'Verification code',
+    sasWaiting: 'Waiting for the other participant to connect to generate the SAS code…',
+    sasMismatchWarning: 'If the codes do not match, leave the room immediately — an intermediary may be intercepting.',
+    sasLinkSecretActive: 'Enhanced protection active via the #k invite link secret.',
+    sasManualModeHint: 'Joined by room code only: compare this SAS code with the other participant.',
     close: 'Close',
   },
   inactivity: {

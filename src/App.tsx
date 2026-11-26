@@ -88,6 +88,9 @@ function AppContent({
           participants={participantsWithVideo}
           messages={session.messages}
           videoCall={videoCall}
+          sasCode={session.sasCode}
+          e2eeReady={session.e2eeReady}
+          hasLinkSecret={session.hasLinkSecret}
           onSendMessage={session.sendMessage}
           onLeaveRoom={session.leaveRoom}
         />
