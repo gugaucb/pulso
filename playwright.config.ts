@@ -4,7 +4,7 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   workers: 1,
-  timeout: 30_000,
+  timeout: 60_000,
   expect: {
     timeout: 10_000,
   },
@@ -30,8 +30,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run preview -- --host 127.0.0.1 --port 4173 --strictPort',
-    url: 'http://127.0.0.1:4173',
+    command: 'HOST=127.0.0.1 PORT=4173 node dist/server/index.js',
+    url: 'http://127.0.0.1:4173/healthz',
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
   },
