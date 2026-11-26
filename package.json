@@ -4,8 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "dev": "node scripts/dev.mjs",
+    "dev:client": "vite",
+    "dev:server": "tsx watch server/index.ts",
+    "build": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit && vite build && node scripts/build-server.mjs",
+    "start": "node dist/server/index.js",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

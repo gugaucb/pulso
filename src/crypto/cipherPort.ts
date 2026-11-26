@@ -3,7 +3,6 @@ import type { EncryptedEnvelope, ParticipantRole } from '../domain/types';
 export interface E2eeEncryptContext {
   roomCode: string;
   senderId: string;
-  senderName: string;
   senderRole: ParticipantRole;
 }
 

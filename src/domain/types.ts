@@ -1,14 +1,22 @@
-export type RoomMode = 'normal' | 'tor';
+import type {
+  CallSignal,
+  IceServerConfig,
+  Participant,
+  ParticipantRole,
+  RoomErrorCode,
+  RoomMode,
+  WireEncryptedEnvelope,
+} from '../../shared/protocol';
 
-export type ParticipantRole = 'host' | 'guest';
-
-export interface Participant {
-  id: string;
-  displayName: string;
-  role: ParticipantRole;
-  online: boolean;
-  videoEnabled?: boolean;
-}
+export type {
+  CallSignal,
+  IceServerConfig,
+  Participant,
+  ParticipantRole,
+  RoomErrorCode,
+  RoomMode,
+  WireEncryptedEnvelope,
+};
 
 export interface EphemeralMessage {
   id: string;
@@ -19,24 +27,7 @@ export interface EphemeralMessage {
   createdAt: number;
 }
 
-export interface EncryptedEnvelope {
-  version: number;
-  roomCode: string;
-  senderId: string;
-  senderName: string;
-  senderRole: ParticipantRole;
-  seq: number;
-  iv: string;
-  ciphertext: string;
-  sentAt: number;
-}
-
-export type RoomErrorCode =
-  | 'invalid_code'
-  | 'room_not_found'
-  | 'room_full'
-  | 'room_expired'
-  | 'transport_error';
+export type EncryptedEnvelope = WireEncryptedEnvelope;
 
 export type ConnectionStatus =
   | 'idle'
@@ -46,12 +37,6 @@ export type ConnectionStatus =
   | 'disconnected'
   | 'expired'
   | 'error';
-
-export interface CallSignal {
-  type: 'offer' | 'answer' | 'ice' | 'media_state' | 'hangup';
-  fromId: string;
-  payload?: unknown;
-}
 
 export type CallLayout = 'hybrid' | 'pip' | 'focus';
 
@@ -68,6 +53,7 @@ export type TransportEvent =
       mode: RoomMode;
       onionAddress?: string;
       expiresAt: number;
+      iceServers?: IceServerConfig[];
     }
   | {
       type: 'participant_joined';

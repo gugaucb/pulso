@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { App } from './App';
 import { isValidRoomCode } from './domain/roomCode';
+import { BroadcastChannelTransport } from './transport/BroadcastChannelTransport';
 import { InMemoryTransportHub } from './transport/InMemoryTransport';
 
 const ROOM_CODE_REGEX = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$/;
@@ -214,12 +215,12 @@ describe('PULSO App integration', () => {
     expect(window.location.hash).toBe('');
   });
 
-  it('creates a room and auto-joins cleanly under React StrictMode with default BroadcastChannelTransport', async () => {
+  it('creates a room and auto-joins cleanly under React StrictMode with BroadcastChannelTransport', async () => {
     const user = userEvent.setup();
 
     render(
       <StrictMode>
-        <App initialLocale="pt-br" />
+        <App transport={new BroadcastChannelTransport()} initialLocale="pt-br" />
       </StrictMode>,
     );
 

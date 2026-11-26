@@ -53,10 +53,10 @@ describe('e2eeSession (Web Crypto ECDH P-256 + HKDF-SHA256 + AES-256-GCM)', () =
     const hostEnvelope = await host.encrypt('Segredo do anfitrião', {
       roomCode,
       senderId: 'host-1',
-      senderName: 'Ana',
       senderRole: 'host',
     });
 
+    expect(hostEnvelope).not.toHaveProperty('senderName');
     expect(hostEnvelope.seq).toBe(1);
     expect(atob(hostEnvelope.ciphertext)).not.toContain('Segredo');
     const hostIv = base64ToBytes(hostEnvelope.iv);
@@ -71,9 +71,10 @@ describe('e2eeSession (Web Crypto ECDH P-256 + HKDF-SHA256 + AES-256-GCM)', () =
     const guestEnvelope = await guest.encrypt('Resposta do convidado', {
       roomCode,
       senderId: 'guest-1',
-      senderName: 'João',
       senderRole: 'guest',
     });
+
+    expect(guestEnvelope).not.toHaveProperty('senderName');
 
     expect(guestEnvelope.seq).toBe(1);
     const guestIv = base64ToBytes(guestEnvelope.iv);
@@ -116,7 +117,6 @@ describe('e2eeSession (Web Crypto ECDH P-256 + HKDF-SHA256 + AES-256-GCM)', () =
     const envFromHost = await host.encrypt('Mensagem confidencial', {
       roomCode,
       senderId: 'host-1',
-      senderName: 'Ana',
       senderRole: 'host',
     });
     await expect(guestWrongK.decrypt(envFromHost)).rejects.toThrow();
@@ -135,7 +135,6 @@ describe('e2eeSession (Web Crypto ECDH P-256 + HKDF-SHA256 + AES-256-GCM)', () =
     const env2 = await host2.encrypt('Só com #k', {
       roomCode,
       senderId: 'host-2',
-      senderName: 'Ana',
       senderRole: 'host',
     });
     await expect(guestNoK.decrypt(env2)).rejects.toThrow();
@@ -186,19 +185,16 @@ describe('e2eeSession (Web Crypto ECDH P-256 + HKDF-SHA256 + AES-256-GCM)', () =
     const env1 = await host.encrypt('Msg 1', {
       roomCode,
       senderId: 'host-1',
-      senderName: 'Ana',
       senderRole: 'host',
     });
     const env2 = await host.encrypt('Msg 2', {
       roomCode,
       senderId: 'host-1',
-      senderName: 'Ana',
       senderRole: 'host',
     });
     const env3 = await host.encrypt('Msg 3', {
       roomCode,
       senderId: 'host-1',
-      senderName: 'Ana',
       senderRole: 'host',
     });
 
@@ -248,7 +244,6 @@ describe('e2eeSession (Web Crypto ECDH P-256 + HKDF-SHA256 + AES-256-GCM)', () =
     const env = await host.encrypt('Antes de destruir', {
       roomCode,
       senderId: 'host-1',
-      senderName: 'Ana',
       senderRole: 'host',
     });
 
@@ -260,7 +255,6 @@ describe('e2eeSession (Web Crypto ECDH P-256 + HKDF-SHA256 + AES-256-GCM)', () =
       host.encrypt('Depois', {
         roomCode,
         senderId: 'host-1',
-        senderName: 'Ana',
         senderRole: 'host',
       }),
     ).rejects.toThrow(/destroyed/i);
