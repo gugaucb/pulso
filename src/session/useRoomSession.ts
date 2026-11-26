@@ -39,6 +39,7 @@ export interface UseRoomSessionOptions {
   initialUrl?: string;
   inactivityDurationMs?: number;
   initialLocale?: Locale;
+  defaultDisplayName?: string;
 }
 
 export interface RoomSessionState {
@@ -187,7 +188,8 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
 
   const createRoom = useCallback(
     async (displayName?: string) => {
-      const cleanName = displayName?.trim() || DEFAULT_DISPLAY_NAME;
+      const fallbackName = options.defaultDisplayName ?? DEFAULT_DISPLAY_NAME;
+      const cleanName = displayName?.trim() || fallbackName;
       const code = generateRoomCode();
       secretKeyRef.current = generateSecretKey();
       setErrorCode(null);
@@ -200,7 +202,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
         inactivityDurationMs: options.inactivityDurationMs,
       });
     },
-    [options.inactivityDurationMs, transport],
+    [options.defaultDisplayName, options.inactivityDurationMs, transport],
   );
 
   const joinRoom = useCallback(
@@ -211,7 +213,8 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
         return;
       }
 
-      const cleanName = displayName?.trim() || DEFAULT_DISPLAY_NAME;
+      const fallbackName = options.defaultDisplayName ?? DEFAULT_DISPLAY_NAME;
+      const cleanName = displayName?.trim() || fallbackName;
       const formatted = formatRoomCode(rawCode);
       setErrorCode(null);
       setStatus('connecting');
@@ -221,7 +224,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
         displayName: cleanName,
       });
     },
-    [transport],
+    [options.defaultDisplayName, transport],
   );
 
   useEffect(() => {

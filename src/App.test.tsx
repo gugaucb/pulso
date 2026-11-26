@@ -13,7 +13,7 @@ describe('PULSO App integration', () => {
     const hub = new InMemoryTransportHub();
     const hostTransport = hub.createTransport();
 
-    render(<App transport={hostTransport} />);
+    render(<App transport={hostTransport} initialLocale="pt-br" />);
 
     expect(screen.getByText('PULSO')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /entre ou crie uma sala/i })).toBeInTheDocument();
@@ -51,9 +51,9 @@ describe('PULSO App integration', () => {
     const user = userEvent.setup();
     const hub = new InMemoryTransportHub();
 
-    const hostView = render(<App transport={hub.createTransport()} />);
-    const guestView = render(<App transport={hub.createTransport()} />);
-    const intruderView = render(<App transport={hub.createTransport()} />);
+    const hostView = render(<App transport={hub.createTransport()} initialLocale="pt-br" />);
+    const guestView = render(<App transport={hub.createTransport()} initialLocale="pt-br" />);
+    const intruderView = render(<App transport={hub.createTransport()} initialLocale="pt-br" />);
 
     const host = within(hostView.container);
     const guest = within(guestView.container);
@@ -129,7 +129,7 @@ describe('PULSO App integration', () => {
     const user = userEvent.setup();
     const hub = new InMemoryTransportHub();
 
-    const hostView = render(<App transport={hub.createTransport()} />);
+    const hostView = render(<App transport={hub.createTransport()} initialLocale="pt-br" />);
     const host = within(hostView.container);
 
     await user.click(host.getByRole('button', { name: /criar nova sala/i }));
@@ -142,6 +142,7 @@ describe('PULSO App integration', () => {
       <App
         transport={hub.createTransport()}
         initialUrl={`https://pulso.example/?room=${createdCode}#k=secret256`}
+        initialLocale="pt-br"
       />,
     );
     const guest = within(guestView.container);
@@ -156,7 +157,7 @@ describe('PULSO App integration', () => {
     const user = userEvent.setup();
     const hub = new InMemoryTransportHub();
 
-    render(<App transport={hub.createTransport()} />);
+    render(<App transport={hub.createTransport()} initialLocale="pt-br" />);
 
     const codeInput = screen.getByLabelText(/código da sala/i);
     await user.type(codeInput, 'ABC');

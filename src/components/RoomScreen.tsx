@@ -54,7 +54,7 @@ export function RoomScreen({
   };
 
   return (
-    <div className="h-screen w-full flex overflow-hidden bg-[#F8F9FC]">
+    <div className="h-screen w-full flex overflow-hidden bg-[#F8F9FC] dark:bg-[#1A1C2A] transition-colors">
       <RoomSidebar
         roomCode={roomCode}
         localParticipant={localParticipant}

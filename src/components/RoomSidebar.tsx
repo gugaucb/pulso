@@ -1,5 +1,7 @@
-import { Clock, Copy, Check, Link2, LogOut } from 'lucide-react';
-import type { Participant } from '../domain/types';
+import { Check, Clock, Copy, Globe, Link2, LogOut, Moon, Sun } from 'lucide-react';
+import type { Locale, Participant } from '../domain/types';
+import { DEFAULT_GUEST_NAMES, LOCALE_OPTIONS, useI18n } from '../i18n';
+import { useTheme } from '../theme/ThemeContext';
 import { getInitials } from '../utils/formatters';
 import { PulsoLogo } from './PulsoLogo';
 
@@ -24,12 +26,16 @@ export function RoomSidebar({
   onCopyLink,
   onLeaveRoom,
 }: RoomSidebarProps) {
+  const { locale, setLocale, t } = useI18n();
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === 'dark';
+
   const onlineCount = participants.filter((p) => p.online).length;
-  const onlineText = onlineCount === 1 ? '1 pessoa online' : `${onlineCount} pessoas online`;
+  const onlineText = t.room.peopleOnline(onlineCount);
 
   return (
     <aside
-      aria-label="Barra lateral da sala"
+      aria-label={t.room.sidebarAriaLabel}
       className="hidden md:flex md:w-64 md:shrink-0 flex-col justify-between bg-[#141522] text-slate-200 border-r border-slate-800/80 p-5 select-none"
     >
       <div className="space-y-6">
@@ -39,7 +45,7 @@ export function RoomSidebar({
 
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-            Sala atual
+            {t.room.currentRoom}
           </p>
           <div className="flex items-center justify-between rounded-xl bg-[#1B1D2C] border border-slate-700/60 px-3.5 py-2.5">
             <span className="font-mono-tabular text-sm font-semibold tracking-wider text-white">
@@ -48,8 +54,8 @@ export function RoomSidebar({
             <button
               type="button"
               onClick={onCopyCode}
-              aria-label="Copiar código da sala"
-              title="Copiar código"
+              aria-label={t.room.copyCodeSidebar}
+              title={t.room.copyCode}
               className="text-slate-400 hover:text-white transition cursor-pointer"
             >
               {copiedCode ? (
@@ -67,15 +73,16 @@ export function RoomSidebar({
 
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2.5">
-            Participantes
+            {t.room.participants}
           </p>
           <ul className="space-y-2">
             {participants.map((participant) => {
               const isSelf = participant.id === localParticipant.id;
+              const isDefaultAnonymous = DEFAULT_GUEST_NAMES.has(participant.displayName);
               const label = isSelf
-                ? participant.displayName !== 'Visitante'
-                  ? `Você (${participant.displayName})`
-                  : 'Você'
+                ? !isDefaultAnonymous
+                  ? t.room.youWithName(participant.displayName)
+                  : t.room.you
                 : participant.displayName;
               const avatarBg = isSelf ? 'bg-[#3B82F6]' : 'bg-[#6344F5]';
 
@@ -88,7 +95,7 @@ export function RoomSidebar({
                     className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white ${avatarBg}`}
                     aria-hidden="true"
                   >
-                    {getInitials(isSelf ? participant.displayName : participant.displayName)}
+                    {getInitials(participant.displayName)}
                   </span>
                   <span className="truncate font-medium">{label}</span>
                 </li>
@@ -99,39 +106,90 @@ export function RoomSidebar({
 
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-            Sobre a sala
+            {t.room.aboutRoom}
           </p>
           <div className="flex items-center gap-2 text-xs text-slate-300 px-1">
             <Clock className="h-4 w-4 text-slate-400" aria-hidden="true" />
-            <span>Expira em 1h</span>
+            <span>{t.room.expiresIn1h}</span>
           </div>
         </div>
       </div>
 
-      <div className="pt-4 border-t border-slate-800/80 space-y-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 px-1">
-          Atalhos
+      <div className="pt-4 border-t border-slate-800/80 space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-1">
+          {t.room.shortcuts}
         </p>
-        <button
-          type="button"
-          onClick={onCopyLink}
-          className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-300 hover:bg-[#1B1D2C] hover:text-white transition cursor-pointer"
-        >
-          {copiedLink ? (
-            <Check className="h-4 w-4 text-[#22C55E]" />
-          ) : (
-            <Link2 className="h-4 w-4 text-slate-400" />
-          )}
-          <span>{copiedLink ? 'Link copiado!' : 'Copiar link'}</span>
-        </button>
-        <button
-          type="button"
-          onClick={onLeaveRoom}
-          className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-300 hover:bg-red-500/10 hover:text-red-300 transition cursor-pointer"
-        >
-          <LogOut className="h-4 w-4 text-slate-400" />
-          <span>Sair da sala</span>
-        </button>
+
+        <div className="space-y-1">
+          <button
+            type="button"
+            onClick={onCopyLink}
+            className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-300 hover:bg-[#1B1D2C] hover:text-white transition cursor-pointer"
+          >
+            {copiedLink ? (
+              <Check className="h-4 w-4 text-[#22C55E]" />
+            ) : (
+              <Link2 className="h-4 w-4 text-slate-400" />
+            )}
+            <span>{copiedLink ? t.room.linkCopied : t.room.copyLink}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onLeaveRoom}
+            className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-300 hover:bg-red-500/10 hover:text-red-300 transition cursor-pointer"
+          >
+            <LogOut className="h-4 w-4 text-slate-400" />
+            <span>{t.room.leaveRoom}</span>
+          </button>
+        </div>
+
+        <div className="pt-2 border-t border-slate-800/60 space-y-2">
+          <div className="relative flex items-center">
+            <Globe
+              className="h-3.5 w-3.5 text-slate-400 pointer-events-none absolute left-2.5"
+              aria-hidden="true"
+            />
+            <select
+              aria-label={t.localeSelector.label}
+              value={locale}
+              onChange={(e) => setLocale(e.target.value as Locale)}
+              className="w-full rounded-lg border border-slate-700/70 bg-[#1B1D2C] pl-8 pr-2.5 py-1.5 text-xs font-medium text-slate-200 hover:border-slate-600 focus:border-[#6344F5] focus:outline-none transition cursor-pointer"
+            >
+              {LOCALE_OPTIONS.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isDark}
+            aria-label={t.theme.dark}
+            onClick={toggleTheme}
+            className="w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:bg-[#1B1D2C] hover:text-white transition cursor-pointer"
+          >
+            <span className="inline-flex items-center gap-2">
+              {isDark ? (
+                <Moon className="h-3.5 w-3.5 text-indigo-300" aria-hidden="true" />
+              ) : (
+                <Sun className="h-3.5 w-3.5 text-amber-300" aria-hidden="true" />
+              )}
+              <span>{isDark ? t.theme.dark : t.theme.light}</span>
+            </span>
+            <span
+              aria-hidden="true"
+              className={`inline-flex h-4 w-7 items-center rounded-full p-0.5 transition ${
+                isDark ? 'bg-[#5B3DF5] justify-end' : 'bg-slate-700 justify-start'
+              }`}
+            >
+              <span className="h-3 w-3 rounded-full bg-white" />
+            </span>
+          </button>
+        </div>
       </div>
     </aside>
   );
