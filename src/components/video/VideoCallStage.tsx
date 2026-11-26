@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Check,
   LayoutGrid,
+  MessageSquare,
   Mic,
   MicOff,
   MonitorUp,
@@ -31,6 +32,8 @@ interface VideoCallStageProps {
   onToggleScreenShare: () => void;
   onEndCall: () => void;
   onChangeLayout: (layout: CallLayout) => void;
+  mobileMessagesOpen?: boolean;
+  onToggleMobileMessages?: () => void;
 }
 
 export function VideoCallStage({
@@ -50,6 +53,8 @@ export function VideoCallStage({
   onToggleScreenShare,
   onEndCall,
   onChangeLayout,
+  mobileMessagesOpen = false,
+  onToggleMobileMessages,
 }: VideoCallStageProps) {
   const { t } = useI18n();
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
@@ -82,10 +87,12 @@ export function VideoCallStage({
   const isFocus = layout === 'focus';
 
   const containerClass = isPip
-    ? 'fixed bottom-20 right-4 z-30 w-64 sm:w-80 aspect-video rounded-2xl overflow-hidden bg-[#141522] border border-slate-700/80 shadow-2xl'
+    ? 'fixed bottom-20 right-4 z-30 w-56 sm:w-80 aspect-video rounded-2xl overflow-hidden bg-[#141522] border border-slate-700/80 shadow-2xl'
     : isFocus
-      ? 'relative flex-1 min-h-0 min-w-0 rounded-2xl overflow-hidden bg-[#141522] border border-slate-800/80 shadow-lg m-3 sm:m-4'
-      : 'relative shrink-0 h-[44%] min-h-[230px] max-h-[420px] rounded-2xl overflow-hidden bg-[#141522] border border-slate-800/80 shadow-md mx-3 sm:mx-5 mt-3';
+      ? 'relative flex-1 min-h-0 min-w-0 rounded-2xl overflow-hidden bg-[#141522] border border-slate-800/80 shadow-lg m-2 sm:m-4'
+      : mobileMessagesOpen
+        ? 'relative shrink-0 h-44 md:h-[44%] md:min-h-[230px] md:max-h-[420px] rounded-2xl overflow-hidden bg-[#141522] border border-slate-800/80 shadow-md mx-2 sm:mx-5 mt-2 sm:mt-3'
+        : 'relative flex-1 min-h-0 md:flex-none md:h-[44%] md:min-h-[230px] md:max-h-[420px] rounded-2xl overflow-hidden bg-[#141522] border border-slate-800/80 shadow-md mx-2 sm:mx-5 my-2 md:my-0 md:mt-3';
 
   const layoutOptions: { id: CallLayout; label: string }[] = [
     { id: 'hybrid', label: t.videoCall.layoutHybrid },
@@ -99,7 +106,7 @@ export function VideoCallStage({
     <section
       aria-label={t.videoCall.startCall}
       data-call-layout={layout}
-      className={containerClass}
+      className={`pulso-print-hide ${containerClass}`}
     >
       {/* Remote video feed */}
       <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#161828] via-[#1C2035] to-[#121420]">
@@ -307,6 +314,31 @@ export function VideoCallStage({
             </div>
           )}
         </div>
+
+        {layout === 'hybrid' && onToggleMobileMessages && (
+          <button
+            type="button"
+            onClick={onToggleMobileMessages}
+            aria-label={
+              mobileMessagesOpen
+                ? t.videoCall.backToVideo
+                : t.videoCall.mobileToggleMessages
+            }
+            aria-expanded={mobileMessagesOpen}
+            className={`md:hidden inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-white transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
+              mobileMessagesOpen
+                ? 'bg-[#5B3DF5] hover:bg-[#4E32D9]'
+                : 'bg-slate-700/80 hover:bg-slate-600'
+            }`}
+          >
+            <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="sr-only sm:not-sr-only">
+              {mobileMessagesOpen
+                ? t.videoCall.backToVideo
+                : t.videoCall.mobileToggleMessages}
+            </span>
+          </button>
+        )}
       </div>
     </section>
   );

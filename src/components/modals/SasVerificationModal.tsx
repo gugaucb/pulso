@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Lock, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useI18n } from '../../i18n';
 
@@ -16,9 +16,16 @@ export function SasVerificationModal({
   onClose,
 }: SasVerificationModalProps) {
   const { t } = useI18n();
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    const raf = requestAnimationFrame(() => {
+      closeBtnRef.current?.focus();
+    });
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         onClose();
@@ -26,7 +33,9 @@ export function SasVerificationModal({
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => {
+      cancelAnimationFrame(raf);
       document.removeEventListener('keydown', handleKeyDown);
+      previousFocusRef.current?.focus();
     };
   }, [onClose, open]);
 
@@ -34,7 +43,7 @@ export function SasVerificationModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4"
+      className="pulso-print-hide fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
@@ -99,9 +108,10 @@ export function SasVerificationModal({
 
         <div className="mt-6 flex justify-end">
           <button
+            ref={closeBtnRef}
             type="button"
             onClick={onClose}
-            className="rounded-xl bg-[#5B3DF5] hover:bg-[#4E32D9] dark:hover:bg-[#6344F5] px-4 py-2 text-sm font-semibold text-white transition cursor-pointer"
+            className="min-h-[44px] sm:min-h-0 rounded-xl bg-[#5B3DF5] hover:bg-[#4E32D9] dark:hover:bg-[#6344F5] px-4 py-2 text-sm font-semibold text-white transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
           >
             {t.e2ee.close}
           </button>

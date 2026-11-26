@@ -62,7 +62,7 @@ export function EntryScreen({
   const themeAriaLabel = isDark ? t.theme.switchToLight : t.theme.switchToDark;
 
   return (
-    <main className="min-h-screen bg-[#F8F9FC] dark:bg-[#1A1C2A] flex flex-col items-center justify-center p-4 transition-colors">
+    <main className="min-h-screen bg-[#F8F9FC] dark:bg-[#1A1C2A] flex flex-col items-center justify-center p-4 sm:p-6 transition-colors">
       <div className="w-full max-w-md flex items-center justify-end gap-2 mb-3">
         <div className="relative inline-flex items-center">
           <Globe
@@ -73,7 +73,7 @@ export function EntryScreen({
             aria-label={t.localeSelector.label}
             value={locale}
             onChange={(e) => setLocale(e.target.value as Locale)}
-            className="rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] pl-8 pr-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-[#2B2F45] focus:border-[#5B3DF5] focus:outline-none focus:ring-2 focus:ring-[#5B3DF5]/20 transition cursor-pointer"
+            className="min-h-[44px] sm:min-h-0 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] pl-8 pr-3 py-2 sm:py-1.5 text-xs font-medium text-slate-700 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-[#2B2F45] focus:border-[#5B3DF5] focus:outline-none focus:ring-2 focus:ring-[#5B3DF5]/20 focus-visible:ring-2 focus-visible:ring-[#5B3DF5] transition cursor-pointer"
           >
             {LOCALE_OPTIONS.map((option) => (
               <option key={option.code} value={option.code}>
@@ -89,7 +89,7 @@ export function EntryScreen({
           aria-label={themeAriaLabel}
           aria-pressed={isDark}
           title={themeAriaLabel}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-[#2B2F45] focus:outline-none focus:ring-2 focus:ring-[#5B3DF5]/20 transition cursor-pointer"
+          className="min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] px-3 py-2 sm:py-1.5 text-xs font-medium text-slate-700 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-[#2B2F45] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5] transition cursor-pointer"
         >
           {isDark ? (
             <Sun className="h-3.5 w-3.5 text-amber-400" aria-hidden="true" />
@@ -102,7 +102,7 @@ export function EntryScreen({
         </button>
       </div>
 
-      <section className="w-full max-w-md bg-white dark:bg-[#232638] rounded-2xl shadow-lg border border-slate-200/80 dark:border-[#2E3248] p-8 transition-colors">
+      <section className="w-full max-w-md bg-white dark:bg-[#232638] rounded-2xl shadow-lg border border-slate-200/80 dark:border-[#2E3248] p-5 sm:p-8 transition-colors">
         <div className="flex flex-col items-center text-center mb-6">
           <PulsoLogo variant={isDark ? 'dark' : 'light'} size="md" />
           <h1 className="mt-5 text-2xl font-bold text-[#111827] dark:text-slate-50 tracking-tight">
@@ -134,7 +134,7 @@ export function EntryScreen({
               onBlur={() => setTouched(true)}
               disabled={isConnecting}
               aria-invalid={visibleError ? 'true' : 'false'}
-              className="w-full rounded-xl border border-slate-300 dark:border-[#2E3248] bg-slate-50/70 dark:bg-[#141522] px-4 py-3 text-center font-mono-tabular text-base tracking-wider text-[#111827] dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-400 focus:border-[#5B3DF5] dark:focus:border-[#6344F5] focus:bg-white dark:focus:bg-[#1B1D2C] focus:outline-none focus:ring-2 focus:ring-[#5B3DF5]/20 transition"
+              className="min-h-[44px] w-full rounded-xl border border-slate-300 dark:border-[#2E3248] bg-slate-50/70 dark:bg-[#141522] px-4 py-3 text-center font-mono-tabular text-base tracking-wider text-[#111827] dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-400 focus:border-[#5B3DF5] dark:focus:border-[#6344F5] focus:bg-white dark:focus:bg-[#1B1D2C] focus:outline-none focus:ring-2 focus:ring-[#5B3DF5]/20 transition"
             />
           </div>
 
@@ -154,7 +154,7 @@ export function EntryScreen({
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               disabled={isConnecting}
-              className="w-full rounded-xl border border-slate-300 dark:border-[#2E3248] bg-white dark:bg-[#141522] px-4 py-2.5 text-sm text-[#111827] dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-400 focus:border-[#5B3DF5] dark:focus:border-[#6344F5] focus:bg-white dark:focus:bg-[#1B1D2C] focus:outline-none focus:ring-2 focus:ring-[#5B3DF5]/20 transition"
+              className="min-h-[44px] w-full rounded-xl border border-slate-300 dark:border-[#2E3248] bg-white dark:bg-[#141522] px-4 py-2.5 text-sm text-[#111827] dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-400 focus:border-[#5B3DF5] dark:focus:border-[#6344F5] focus:bg-white dark:focus:bg-[#1B1D2C] focus:outline-none focus:ring-2 focus:ring-[#5B3DF5]/20 transition"
             />
           </div>
 
@@ -171,7 +171,7 @@ export function EntryScreen({
           <button
             type="submit"
             disabled={isConnecting}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#5B3DF5] hover:bg-[#4E32D9] active:bg-[#4328C4] disabled:opacity-60 px-4 py-3 text-sm font-semibold text-white shadow-sm transition cursor-pointer"
+            className="min-h-[44px] w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#5B3DF5] hover:bg-[#4E32D9] active:bg-[#4328C4] disabled:opacity-60 px-4 py-3 text-sm font-semibold text-white shadow-sm transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5] focus-visible:ring-offset-2"
           >
             {isConnecting ? (
               <>
@@ -278,7 +278,7 @@ export function EntryScreen({
           type="button"
           onClick={handleCreateClick}
           disabled={isConnecting}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-[#2E3248] bg-white dark:bg-[#1B1D2C] hover:bg-slate-50 dark:hover:bg-[#2B2F45] active:bg-slate-100 disabled:opacity-60 px-4 py-3 text-sm font-semibold text-[#111827] dark:text-slate-100 transition cursor-pointer"
+          className="min-h-[44px] w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-[#2E3248] bg-white dark:bg-[#1B1D2C] hover:bg-slate-50 dark:hover:bg-[#2B2F45] active:bg-slate-100 disabled:opacity-60 px-4 py-3 text-sm font-semibold text-[#111827] dark:text-slate-100 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
         >
           <PlusCircle className="h-4 w-4 text-[#5B3DF5] dark:text-[#818CF8]" />
           <span>{t.entry.createButton}</span>

@@ -13,9 +13,12 @@ import { MessageComposer } from './MessageComposer';
 import { MessageList } from './MessageList';
 import { VideoPreviewModal } from './modals/VideoPreviewModal';
 import { RoomHeader } from './RoomHeader';
-import { RoomSidebar } from './RoomSidebar';
+import { RoomSidebar, RoomSidebarContent } from './RoomSidebar';
 import { LeaveRoomDialog } from './modals/LeaveRoomDialog';
 import { SasVerificationModal } from './modals/SasVerificationModal';
+import { SettingsModal } from './modals/SettingsModal';
+import { ScreenShield } from './privacy/ScreenShield';
+import { SessionWatermark } from './privacy/SessionWatermark';
 import { VideoCallStage } from './video/VideoCallStage';
 
 interface RoomScreenProps {
@@ -71,11 +74,19 @@ export function RoomScreen({
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedOnion, setCopiedOnion] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileVideoChatOpen, setMobileVideoChatOpen] = useState(false);
+  const [antiPrintscreenEnabled, setAntiPrintscreenEnabled] = useState(true);
+  const [watermarkEnabled, setWatermarkEnabled] = useState(false);
+  const [liveAnnouncement, setLiveAnnouncement] = useState('');
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [sasModalOpen, setSasModalOpen] = useState(false);
   const codeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const linkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mobileSidebarButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mobileSidebarCloseRef = useRef<HTMLButtonElement | null>(null);
+  const restoreDrawerFocusRef = useRef(true);
 
   useEffect(() => {
     return () => {
@@ -84,6 +95,29 @@ export function RoomScreen({
       if (onionTimerRef.current) clearTimeout(onionTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) return;
+    restoreDrawerFocusRef.current = true;
+    const raf = requestAnimationFrame(() => {
+      mobileSidebarCloseRef.current?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMobileSidebarOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener('keydown', handleKeyDown);
+      if (restoreDrawerFocusRef.current) {
+        mobileSidebarButtonRef.current?.focus();
+      }
+    };
+  }, [mobileSidebarOpen]);
 
   const handleCopyCode = () => {
     void copyToClipboard(roomCode);
@@ -139,21 +173,26 @@ export function RoomScreen({
 
   const messageSection = (
     <>
-      <MessageList
-        roomCode={roomCode}
-        roomMode={roomMode}
-        onionAddress={onionAddress}
-        isHost={isHost}
-        localParticipantId={localParticipant.id}
-        messages={messages}
-        typingParticipantName={typingParticipantName}
-        copiedCode={copiedCode}
-        copiedLink={copiedLink}
-        copiedOnion={copiedOnion}
-        onCopyCode={handleCopyCode}
-        onShareLink={handleCopyLink}
-        onCopyOnion={handleCopyOnion}
-      />
+      <ScreenShield
+        enabled={antiPrintscreenEnabled}
+        overlay={<SessionWatermark enabled={watermarkEnabled} roomCode={roomCode} />}
+      >
+        <MessageList
+          roomCode={roomCode}
+          roomMode={roomMode}
+          onionAddress={onionAddress}
+          isHost={isHost}
+          localParticipantId={localParticipant.id}
+          messages={messages}
+          typingParticipantName={typingParticipantName}
+          copiedCode={copiedCode}
+          copiedLink={copiedLink}
+          copiedOnion={copiedOnion}
+          onCopyCode={handleCopyCode}
+          onShareLink={handleCopyLink}
+          onCopyOnion={handleCopyOnion}
+        />
+      </ScreenShield>
       <MessageComposer
         onSendMessage={onSendMessage}
         onTypingChange={onTypingChange}
@@ -162,6 +201,9 @@ export function RoomScreen({
   );
   return (
     <div className="h-screen w-full flex overflow-hidden bg-[#F8F9FC] dark:bg-[#1A1C2A] transition-colors">
+      <div className="pulso-print-notice" aria-hidden="true">
+        {t.privacy.printBlockedNotice}
+      </div>
       <RoomSidebar
         roomCode={roomCode}
         roomMode={roomMode}
@@ -199,6 +241,9 @@ export function RoomScreen({
           onOpenSas={() => setSasModalOpen(true)}
           onOpenSettings={handleOpenSettings}
           onLeaveRoom={() => setLeaveConfirmOpen(true)}
+          mobileSidebarOpen={mobileSidebarOpen}
+          onToggleMobileSidebar={() => setMobileSidebarOpen((prev) => !prev)}
+          mobileSidebarButtonRef={mobileSidebarButtonRef}
         />
 
         {inactivityAlertLevel !== 'normal' && (
@@ -206,7 +251,7 @@ export function RoomScreen({
             role={inactivityAlertLevel === 'critical' ? 'alert' : 'status'}
             aria-live={inactivityAlertLevel === 'critical' ? 'assertive' : 'polite'}
             data-inactivity-banner={inactivityAlertLevel}
-            className={`mx-4 sm:mx-5 mt-2.5 flex items-center justify-between gap-3 rounded-xl border px-4 py-2.5 text-xs font-medium transition-colors ${
+            className={`pulso-print-hide mx-4 sm:mx-5 mt-2.5 flex items-center justify-between gap-3 rounded-xl border px-4 py-2.5 text-xs font-medium transition-colors ${
               inactivityAlertLevel === 'critical'
                 ? 'border-[#EF4444] bg-red-50 dark:bg-red-500/15 text-red-800 dark:text-red-200'
                 : 'border-[#F59E0B] bg-amber-50 dark:bg-amber-500/15 text-amber-900 dark:text-amber-200'
@@ -321,7 +366,7 @@ export function RoomScreen({
             {videoCall.focusChatOpen ? (
               <aside
                 aria-label={t.messages.listAriaLabel}
-                className="w-80 lg:w-96 shrink-0 flex flex-col border-l border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#1A1C2A] min-h-0"
+                className="fixed inset-0 z-30 md:static md:w-80 lg:w-96 shrink-0 flex flex-col border-l border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#1A1C2A] min-h-0"
               >
                 <div className="shrink-0 flex items-center justify-between px-3.5 py-2.5 border-b border-slate-200 dark:border-[#2E3248]">
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
@@ -376,10 +421,20 @@ export function RoomScreen({
                 onToggleScreenShare={() => void videoCall.toggleScreenShare()}
                 onEndCall={() => void videoCall.endCall()}
                 onChangeLayout={videoCall.setLayout}
+                mobileMessagesOpen={mobileVideoChatOpen}
+                onToggleMobileMessages={() => setMobileVideoChatOpen((prev) => !prev)}
               />
             )}
 
-            {messageSection}
+            <div
+              className={
+                isHybridLayout && !mobileVideoChatOpen
+                  ? 'hidden md:flex md:flex-1 md:flex-col md:min-h-0'
+                  : 'flex-1 flex flex-col min-h-0'
+              }
+            >
+              {messageSection}
+            </div>
 
             {isPipLayout && videoCall && (
               <VideoCallStage
@@ -404,6 +459,62 @@ export function RoomScreen({
           </>
         )}
       </div>
+
+      {mobileSidebarOpen && (
+        <div
+          className="pulso-print-hide fixed inset-0 z-40 flex md:hidden bg-slate-950/60 backdrop-blur-xs"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setMobileSidebarOpen(false);
+            }
+          }}
+        >
+          <div
+            id="mobile-room-sidebar"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.room.sidebarAriaLabel}
+            className="w-72 max-w-[85vw] h-full flex flex-col justify-between bg-[#141522] text-slate-200 border-r border-slate-800/80 p-5 overflow-y-auto select-none shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <RoomSidebarContent
+              roomCode={roomCode}
+              roomMode={roomMode}
+              onionAddress={onionAddress}
+              localParticipant={localParticipant}
+              participants={participants}
+              copiedCode={copiedCode}
+              copiedLink={copiedLink}
+              e2eeReady={e2eeReady}
+              inactivityRemainingMs={inactivityRemainingMs}
+              inactivityAlertLevel={inactivityAlertLevel}
+              onRenewActivity={onRenewActivity ? () => void onRenewActivity() : undefined}
+              onCopyCode={handleCopyCode}
+              onCopyLink={() => {
+                handleCopyLink();
+                setMobileSidebarOpen(false);
+              }}
+              onOpenSas={() => {
+                restoreDrawerFocusRef.current = false;
+                setMobileSidebarOpen(false);
+                setSasModalOpen(true);
+              }}
+              onOpenSettings={() => {
+                restoreDrawerFocusRef.current = false;
+                setMobileSidebarOpen(false);
+                handleOpenSettings();
+              }}
+              onLeaveRoom={() => {
+                restoreDrawerFocusRef.current = false;
+                setMobileSidebarOpen(false);
+                setLeaveConfirmOpen(true);
+              }}
+              onCloseDrawer={() => setMobileSidebarOpen(false)}
+              closeButtonRef={mobileSidebarCloseRef}
+            />
+          </div>
+        </div>
+      )}
 
       {!isTorMode && videoCall && (
         <VideoPreviewModal
@@ -442,39 +553,41 @@ export function RoomScreen({
         onClose={() => setSasModalOpen(false)}
       />
 
-      {settingsOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
-          onClick={() => setSettingsOpen(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="settings-fallback-title"
-            className="w-full max-w-md rounded-2xl bg-white dark:bg-[#232638] border border-slate-200 dark:border-[#2E3248] shadow-xl p-6 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2
-              id="settings-fallback-title"
-              className="text-base font-bold text-[#111827] dark:text-slate-100"
-            >
-              {t.privacy.settingsTitle}
-            </h2>
-            <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-              {t.privacy.honestDisclaimer}
-            </p>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(false)}
-                className="rounded-xl bg-[#5B3DF5] hover:bg-[#4E32D9] px-4 py-2 text-xs font-semibold text-white transition cursor-pointer"
-              >
-                {t.e2ee.close}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SettingsModal
+        open={settingsOpen}
+        antiPrintscreenEnabled={antiPrintscreenEnabled}
+        watermarkEnabled={watermarkEnabled}
+        isTorMode={isTorMode}
+        cameras={videoCall?.snapshot.cameras}
+        microphones={videoCall?.snapshot.microphones}
+        selectedCameraId={videoCall?.snapshot.selectedCameraId}
+        selectedMicrophoneId={videoCall?.snapshot.selectedMicrophoneId}
+        onToggleAntiPrintscreen={() => {
+          setAntiPrintscreenEnabled((prev) => {
+            const next = !prev;
+            setLiveAnnouncement(
+              next ? t.privacy.shieldEnabledAnnouncement : t.privacy.shieldDisabledAnnouncement,
+            );
+            return next;
+          });
+        }}
+        onToggleWatermark={() => {
+          setWatermarkEnabled((prev) => {
+            const next = !prev;
+            setLiveAnnouncement(
+              next
+                ? t.privacy.watermarkEnabledAnnouncement
+                : t.privacy.watermarkDisabledAnnouncement,
+            );
+            return next;
+          });
+        }}
+        onClose={() => setSettingsOpen(false)}
+      />
+
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {liveAnnouncement}
+      </div>
     </div>
   );
 }

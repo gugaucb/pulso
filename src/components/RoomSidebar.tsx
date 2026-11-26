@@ -13,6 +13,7 @@ import {
   Sun,
   Video,
   VideoOff,
+  X,
 } from 'lucide-react';
 import { formatOnionHost } from '../domain/onionAddress';
 import type { Locale, Participant, RoomMode } from '../domain/types';
@@ -26,7 +27,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { getInitials } from '../utils/formatters';
 import { PulsoLogo } from './PulsoLogo';
 
-interface RoomSidebarProps {
+export interface RoomSidebarProps {
   roomCode: string;
   roomMode?: RoomMode;
   onionAddress?: string | null;
@@ -45,7 +46,16 @@ interface RoomSidebarProps {
   onLeaveRoom: () => void;
 }
 
-export function RoomSidebar({
+interface RoomSidebarContentProps extends RoomSidebarProps {
+  onCloseDrawer?: () => void;
+  closeButtonRef?: React.RefObject<HTMLButtonElement | null>;
+}
+
+/**
+ * Shared sidebar body rendered inside both the persistent desktop sidebar
+ * and the mobile slide-over drawer.
+ */
+export function RoomSidebarContent({
   roomCode,
   roomMode = 'normal',
   onionAddress,
@@ -62,7 +72,9 @@ export function RoomSidebar({
   onOpenSas,
   onOpenSettings,
   onLeaveRoom,
-}: RoomSidebarProps) {
+  onCloseDrawer,
+  closeButtonRef,
+}: RoomSidebarContentProps) {
   const { locale, setLocale, t } = useI18n();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
@@ -85,13 +97,21 @@ export function RoomSidebar({
         : 'text-slate-400';
 
   return (
-    <aside
-      aria-label={t.room.sidebarAriaLabel}
-      className="hidden md:flex md:w-64 md:shrink-0 flex-col justify-between bg-[#141522] text-slate-200 border-r border-slate-800/80 p-5 select-none"
-    >
+    <>
       <div className="space-y-6">
-        <div>
+        <div className="flex items-center justify-between gap-2">
           <PulsoLogo variant="dark" size="sm" />
+          {onCloseDrawer && (
+            <button
+              ref={closeButtonRef}
+              type="button"
+              onClick={onCloseDrawer}
+              aria-label={t.room.closeSidebar}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-slate-300 hover:bg-[#1B1D2C] hover:text-white transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6344F5]"
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
+          )}
         </div>
 
         <div>
@@ -328,6 +348,19 @@ export function RoomSidebar({
           </button>
         </div>
       </div>
+    </>
+  );
+}
+
+export function RoomSidebar(props: RoomSidebarProps) {
+  const { t } = useI18n();
+
+  return (
+    <aside
+      aria-label={t.room.sidebarAriaLabel}
+      className="pulso-print-hide hidden md:flex md:w-64 md:shrink-0 flex-col justify-between bg-[#141522] text-slate-200 border-r border-slate-800/80 p-5 select-none"
+    >
+      <RoomSidebarContent {...props} />
     </aside>
   );
 }

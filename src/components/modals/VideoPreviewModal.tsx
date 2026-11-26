@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Mic, MicOff, Video, VideoOff, X } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import type { MediaDeviceOption } from '../../media/MediaPort';
@@ -43,16 +43,27 @@ export function VideoPreviewModal({
   onCancel,
 }: VideoPreviewModalProps) {
   const { t } = useI18n();
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    const raf = requestAnimationFrame(() => {
+      closeBtnRef.current?.focus();
+    });
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         onCancel();
       }
     };
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener('keydown', handleKeyDown);
+      previousFocusRef.current?.focus();
+    };
   }, [open, onCancel]);
 
   if (!open) return null;
@@ -60,7 +71,7 @@ export function VideoPreviewModal({
   const normalizedLevel = micEnabled ? Math.max(0, Math.min(100, audioLevel)) : 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
+    <div className="pulso-print-hide fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
       <div
         role="dialog"
         aria-modal="true"
@@ -75,10 +86,11 @@ export function VideoPreviewModal({
             {t.videoCall.previewTitle}
           </h2>
           <button
+            ref={closeBtnRef}
             type="button"
             onClick={onCancel}
             aria-label={t.e2ee.close}
-            className="rounded-lg p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#2A2E45] transition cursor-pointer"
+            className="rounded-lg p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#2A2E45] transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
