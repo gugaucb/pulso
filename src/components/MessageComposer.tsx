@@ -102,7 +102,7 @@ export function MessageComposer({ onSendMessage, onTypingChange }: MessageCompos
   return (
     <form
       onSubmit={handleSubmit}
-      className="shrink-0 bg-white dark:bg-[#1A1C2A] border-t border-slate-200 dark:border-[#2A2D42] px-4 sm:px-6 py-3.5 transition-colors"
+      className="pulso-print-hide shrink-0 bg-white dark:bg-[#1A1C2A] border-t border-slate-200 dark:border-[#2A2D42] px-3 sm:px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:py-3.5 transition-colors"
     >
       <div
         ref={controlsContainerRef}
@@ -169,7 +169,7 @@ export function MessageComposer({ onSendMessage, onTypingChange }: MessageCompos
             setAttachmentNoticeOpen((prev) => !prev);
             setEmojiOpen(false);
           }}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-[#2B2F45] hover:text-[#111827] dark:hover:text-slate-100 transition cursor-pointer"
+          className="inline-flex h-11 w-11 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-[#2B2F45] hover:text-[#111827] dark:hover:text-slate-100 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
         >
           <Paperclip className="h-4 w-4" aria-hidden="true" />
         </button>
@@ -184,7 +184,7 @@ export function MessageComposer({ onSendMessage, onTypingChange }: MessageCompos
             setEmojiOpen((prev) => !prev);
             setAttachmentNoticeOpen(false);
           }}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-[#2B2F45] hover:text-[#111827] dark:hover:text-slate-100 transition cursor-pointer"
+          className="inline-flex h-11 w-11 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-[#2B2F45] hover:text-[#111827] dark:hover:text-slate-100 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
         >
           <Smile className="h-4 w-4" aria-hidden="true" />
         </button>
@@ -193,7 +193,7 @@ export function MessageComposer({ onSendMessage, onTypingChange }: MessageCompos
           type="submit"
           aria-label={t.messages.sendAriaLabel}
           disabled={!draft.trim() || sending}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#5B3DF5] hover:bg-[#4E32D9] dark:hover:bg-[#6344F5] disabled:opacity-40 text-white transition cursor-pointer"
+          className="inline-flex h-11 w-11 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl bg-[#5B3DF5] hover:bg-[#4E32D9] dark:hover:bg-[#6344F5] disabled:opacity-40 text-white transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
         >
           <Send className="h-4 w-4" />
         </button>

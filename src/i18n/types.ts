@@ -43,6 +43,8 @@ export interface TranslationDictionary {
   };
   room: {
     sidebarAriaLabel: string;
+    openSidebar: string;
+    closeSidebar: string;
     currentRoom: string;
     copyCode: string;
     copyCodeHeader: string;
@@ -138,6 +140,8 @@ export interface TranslationDictionary {
     layoutFocus: string;
     showMessages: string;
     hideMessages: string;
+    mobileToggleMessages: string;
+    backToVideo: string;
     participantVideoActive: string;
     waitingRemoteVideo: string;
     remoteCameraOffLabel: string;
@@ -160,5 +164,14 @@ export interface TranslationDictionary {
     blurCurtainTitle: string;
     blurCurtainHint: string;
     honestDisclaimer: string;
+    printBlockedNotice: string;
+    appearanceSectionTitle: string;
+    mediaSectionTitle: string;
+    mediaNotCheckedYet: string;
+    mediaTorBlocked: string;
+    shieldEnabledAnnouncement: string;
+    shieldDisabledAnnouncement: string;
+    watermarkEnabledAnnouncement: string;
+    watermarkDisabledAnnouncement: string;
   };
 }

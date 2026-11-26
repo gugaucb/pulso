@@ -171,9 +171,10 @@ export function MessageList({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
+        onContextMenu={(event) => event.preventDefault()}
         role="log"
         aria-label={t.messages.listAriaLabel}
-        className="flex-1 overflow-y-auto bg-white dark:bg-[#1A1C2A] p-4 sm:p-6 space-y-4 transition-colors"
+        className="flex-1 overflow-y-auto bg-white dark:bg-[#1A1C2A] p-4 sm:p-6 space-y-4 transition-colors select-none"
       >
         {messages.map((message) => {
           const isOwn = message.senderId === localParticipantId;
@@ -203,7 +204,10 @@ export function MessageList({
                     {formatRelativeTime(message.createdAt, now, locale)}
                   </time>
                 </div>
-                <div className={`rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${bubbleClass}`}>
+                <div
+                  onContextMenu={(event) => event.preventDefault()}
+                  className={`select-none rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${bubbleClass}`}
+                >
                   {message.text}
                 </div>
               </div>

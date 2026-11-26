@@ -5,6 +5,7 @@ import {
   Globe,
   Link2,
   LogOut,
+  Menu,
   Moon,
   MoreVertical,
   Settings,
@@ -30,6 +31,9 @@ interface RoomHeaderProps {
   onOpenSas: () => void;
   onOpenSettings?: () => void;
   onLeaveRoom: () => void;
+  mobileSidebarOpen?: boolean;
+  onToggleMobileSidebar?: () => void;
+  mobileSidebarButtonRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
 export function RoomHeader({
@@ -46,6 +50,9 @@ export function RoomHeader({
   onOpenSas,
   onOpenSettings,
   onLeaveRoom,
+  mobileSidebarOpen = false,
+  onToggleMobileSidebar,
+  mobileSidebarButtonRef,
 }: RoomHeaderProps) {
   const { locale, setLocale, t } = useI18n();
   const { theme, toggleTheme } = useTheme();
@@ -115,44 +122,59 @@ export function RoomHeader({
   }, [menuOpen]);
 
   return (
-    <header className="shrink-0 bg-white dark:bg-[#1A1C2A] border-b border-slate-200 dark:border-[#2A2D42] px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3 transition-colors">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <h1 className="font-mono-tabular text-base sm:text-lg font-bold tracking-wider text-[#111827] dark:text-slate-50">
-            {roomCode}
-          </h1>
+    <header className="pulso-print-hide shrink-0 bg-white dark:bg-[#1A1C2A] border-b border-slate-200 dark:border-[#2A2D42] px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-3 transition-colors">
+      <div className="flex items-center gap-2 min-w-0">
+        {onToggleMobileSidebar && (
           <button
+            ref={mobileSidebarButtonRef}
             type="button"
-            onClick={onCopyCode}
-            aria-label={t.room.copyCodeHeader}
-            title={t.room.copyCode}
-            className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#232638] hover:text-[#111827] dark:hover:text-slate-100 transition cursor-pointer"
+            onClick={onToggleMobileSidebar}
+            aria-label={t.room.openSidebar}
+            aria-expanded={mobileSidebarOpen}
+            aria-controls="mobile-room-sidebar"
+            className="md:hidden inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-slate-50 dark:hover:bg-[#2B2F45] text-slate-700 dark:text-slate-200 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
           >
-            {copiedCode ? (
-              <Check className="h-4 w-4 text-[#22C55E]" />
-            ) : (
-              <Copy className="h-4 w-4" />
-            )}
+            <Menu className="h-5 w-5" aria-hidden="true" />
           </button>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 mt-0.5 flex-wrap">
-          <span className="inline-flex items-center gap-1.5">
+        )}
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <h1 className="font-mono-tabular text-sm sm:text-lg font-bold tracking-wider text-[#111827] dark:text-slate-50 truncate">
+              {roomCode}
+            </h1>
+            <button
+              type="button"
+              onClick={onCopyCode}
+              aria-label={t.room.copyCodeHeader}
+              title={t.room.copyCode}
+              className="inline-flex h-9 w-9 sm:h-auto sm:w-auto items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#232638] hover:text-[#111827] dark:hover:text-slate-100 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
+            >
+              {copiedCode ? (
+                <Check className="h-4 w-4 text-[#22C55E]" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 mt-0.5 flex-wrap">
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className={`h-2 w-2 rounded-full ${statusBadge.dotClass}`}
+                aria-hidden="true"
+              />
+              <span>{presenceLabel}</span>
+            </span>
             <span
-              className={`h-2 w-2 rounded-full ${statusBadge.dotClass}`}
-              aria-hidden="true"
-            />
-            <span>{presenceLabel}</span>
-          </span>
-          <span
-            data-connection-status={statusBadge.key}
-            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none ${statusBadge.pillClass}`}
-          >
-            {statusBadge.label}
-          </span>
+              data-connection-status={statusBadge.key}
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none ${statusBadge.pillClass}`}
+            >
+              {statusBadge.label}
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         {onStartVideoCall && (
           <button
             type="button"
@@ -164,7 +186,7 @@ export function RoomHeader({
             aria-label={t.videoCall.startCall}
             aria-pressed={isCallActive}
             title={t.videoCall.startCall}
-            className={`inline-flex items-center justify-center rounded-xl border p-2 transition cursor-pointer ${
+            className={`inline-flex h-11 w-11 sm:h-auto sm:w-auto items-center justify-center rounded-xl border p-2 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5] ${
               isCallActive
                 ? 'border-[#5B3DF5] bg-[#5B3DF5] text-white shadow-sm'
                 : 'border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-slate-50 dark:hover:bg-[#2B2F45] text-[#5B3DF5] dark:text-[#818CF8]'
@@ -179,7 +201,7 @@ export function RoomHeader({
           onClick={onOpenSas}
           aria-label={t.e2ee.protectedBadge}
           title={t.e2ee.verifyAction}
-          className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition cursor-pointer ${
+          className={`hidden sm:inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5] ${
             e2eeReady
               ? 'border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-500/10 hover:bg-emerald-100/80 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
               : 'border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-slate-50 dark:hover:bg-[#2B2F45] text-slate-600 dark:text-slate-300'
@@ -199,7 +221,7 @@ export function RoomHeader({
         <button
           type="button"
           onClick={onCopyLink}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-slate-50 dark:hover:bg-[#2B2F45] px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer"
+          className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-slate-50 dark:hover:bg-[#2B2F45] px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
         >
           {copiedLink ? (
             <Check className="h-3.5 w-3.5 text-[#22C55E]" />
@@ -217,7 +239,7 @@ export function RoomHeader({
           aria-label={themeAriaLabel}
           aria-pressed={isDark}
           title={themeAriaLabel}
-          className="inline-flex items-center justify-center rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-slate-50 dark:hover:bg-[#2B2F45] p-2 text-slate-700 dark:text-slate-200 transition cursor-pointer"
+          className="hidden sm:inline-flex items-center justify-center rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-slate-50 dark:hover:bg-[#2B2F45] p-2 text-slate-700 dark:text-slate-200 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
         >
           {isDark ? (
             <Sun className="h-4 w-4 text-amber-400" aria-hidden="true" />
@@ -233,7 +255,7 @@ export function RoomHeader({
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((prev) => !prev)}
-            className="inline-flex items-center justify-center rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-slate-50 dark:hover:bg-[#2B2F45] p-2 text-slate-700 dark:text-slate-200 transition cursor-pointer"
+            className="inline-flex h-11 w-11 sm:h-auto sm:w-auto items-center justify-center rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-slate-50 dark:hover:bg-[#2B2F45] p-2 text-slate-700 dark:text-slate-200 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
           >
             <MoreVertical className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -354,7 +376,7 @@ export function RoomHeader({
           type="button"
           onClick={onLeaveRoom}
           aria-label={t.room.leaveRoom}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-red-50 dark:hover:bg-red-500/10 hover:border-red-200 dark:hover:border-red-500/40 hover:text-red-700 dark:hover:text-red-300 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer"
+          className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] hover:bg-red-50 dark:hover:bg-red-500/10 hover:border-red-200 dark:hover:border-red-500/40 hover:text-red-700 dark:hover:text-red-300 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
         >
           <LogOut className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">{t.room.leaveShort}</span>
