@@ -43,7 +43,9 @@ async function createRoomAndGetInviteUrl(
   await expect(hostPage.getByText('Sua sala foi criada!')).toBeVisible();
 
   await hostPage.getByRole('button', { name: 'Compartilhar' }).click();
-  await expect(hostPage.getByText('Link copiado!').first()).toBeVisible();
+  await expect(
+    hostPage.locator('section').getByRole('button', { name: 'Link copiado!' }),
+  ).toBeVisible();
 
   const inviteUrl = await hostPage.evaluate(() => navigator.clipboard.readText());
   expect(inviteUrl).toContain('?room=');
