@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createE2eeSession, type E2eeSession } from '../crypto/cipherPort';
 import { buildInviteUrl, parseInviteUrl } from '../domain/inviteLink';
-import { generateOnionAddress, normalizeOnionAddress } from '../domain/onionAddress';
+import { normalizeOnionAddress } from '../domain/onionAddress';
 import { formatRoomCode, generateRoomCode, isValidRoomCode } from '../domain/roomCode';
 import type {
   ConnectionStatus,
@@ -12,6 +12,7 @@ import type {
   RoomErrorCode,
   RoomExpiryReason,
   RoomMode,
+  RuntimeInfo,
   TransportEvent,
 } from '../domain/types';
 import { createDefaultTransport } from '../transport/createDefaultTransport';
@@ -86,6 +87,7 @@ export interface UseRoomSessionOptions {
   inactivityDurationMs?: number;
   initialLocale?: Locale;
   defaultDisplayName?: string;
+  runtimeInfo?: RuntimeInfo;
 }
 
 export interface CreateRoomOptions {
@@ -592,11 +594,14 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
         const provided = createOptions?.onionAddress
           ? normalizeOnionAddress(createOptions.onionAddress)
           : null;
+        const runtimeOnion = options.runtimeInfo?.onionAddress
+          ? normalizeOnionAddress(options.runtimeInfo.onionAddress)
+          : null;
         const browserOnion =
           typeof window !== 'undefined' && window.location.hostname.endsWith('.onion')
-            ? window.location.origin
+            ? normalizeOnionAddress(window.location.origin)
             : null;
-        resolvedOnion = provided ?? browserOnion ?? generateOnionAddress();
+        resolvedOnion = provided ?? runtimeOnion ?? browserOnion ?? undefined;
       }
       initialOnionRef.current = resolvedOnion ?? null;
 
@@ -613,7 +618,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
         inactivityDurationMs: options.inactivityDurationMs,
       });
     },
-    [options.defaultDisplayName, options.inactivityDurationMs, transport],
+    [options.defaultDisplayName, options.inactivityDurationMs, options.runtimeInfo?.onionAddress, transport],
   );
 
   const joinRoom = useCallback(

@@ -9,6 +9,7 @@
     "dev:server": "tsx watch server/index.ts",
     "build": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit && vite build && node scripts/build-server.mjs",
     "start": "node dist/server/index.js",
+    "start:tor": "tsx server/torLauncher.ts",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

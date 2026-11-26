@@ -9,6 +9,7 @@ import type { RoomTransport } from './transport/RoomTransport';
 
 const ROOM_CODE_REGEX = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$/;
 const V3_ONION_REGEX = /[a-z2-7]{56}\.onion/;
+const REAL_ONION = `http://${'p'.repeat(56)}.onion`;
 
 function spyOnAllMediaPortMethods(mediaPort: FakeMediaPort) {
   return [
@@ -29,7 +30,7 @@ function spyOnAllMediaPortMethods(mediaPort: FakeMediaPort) {
   ];
 }
 
-describe('PULSO Ticket 07: Tor Mode & Strict MediaPort Blocking', () => {
+describe('PULSO Tor Mode, Honest Normal Runtime Guidance & Strict MediaPort Blocking', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     if (typeof window !== 'undefined' && window.history?.replaceState) {
@@ -37,16 +38,18 @@ describe('PULSO Ticket 07: Tor Mode & Strict MediaPort Blocking', () => {
     }
   });
 
-  it('translates mode selector in all 4 locales and creates a Tor room with v3 .onion address, room code, and host readiness instructions', async () => {
+  it('shows honest local-launcher guidance in normal runtime across all 4 locales without fabricating a .onion address', async () => {
     const user = userEvent.setup();
     const hub = new InMemoryTransportHub();
-    const hostMedia = new FakeMediaPort();
+    const baseTransport = hub.createTransport();
+    const createRoomSpy = vi.spyOn(baseTransport, 'createRoom');
 
     render(
       <App
-        transport={hub.createTransport()}
-        mediaPort={hostMedia}
+        transport={baseTransport}
+        mediaPort={new FakeMediaPort()}
         initialLocale="pt-br"
+        runtimeInfo={{ runtimeMode: 'normal' }}
       />,
     );
 
@@ -55,55 +58,52 @@ describe('PULSO Ticket 07: Tor Mode & Strict MediaPort Blocking', () => {
     const torRadio = within(modeGroup).getByRole('radio', { name: /modo tor/i });
     expect(torRadio).not.toBeChecked();
 
-    // Verify translations across en, es, zh-CN, and back to pt-br
+    // Selecting Modo Tor in normal runtime shows honest guidance and disables room creation
+    await user.click(torRadio);
+    expect(torRadio).toBeChecked();
+    expect(screen.getByText(/modo tor requer o launcher local/i)).toBeInTheDocument();
+    expect(screen.getByText('npm run start:tor')).toBeInTheDocument();
+    expect(screen.queryByText(V3_ONION_REGEX)).not.toBeInTheDocument();
+
+    const createBtnPt = screen.getByRole('button', { name: /criar nova sala/i });
+    expect(createBtnPt).toBeDisabled();
+    await user.click(createBtnPt);
+    expect(createRoomSpy).not.toHaveBeenCalled();
+
+    // Verify localized honest guidance across en, es, zh-CN
     const localeSelect = screen.getByLabelText(/idioma/i);
     await user.selectOptions(localeSelect, 'en');
     expect(screen.getByRole('radiogroup', { name: /room mode/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /tor mode/i })).toBeInTheDocument();
+    expect(screen.getByText(/tor mode requires the local launcher/i)).toBeInTheDocument();
+    expect(screen.getByText('npm run start:tor')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /create new room/i })).toBeDisabled();
 
-    await user.selectOptions(localeSelect, 'es');
+    await user.selectOptions(screen.getByLabelText(/language/i), 'es');
     expect(screen.getByRole('radiogroup', { name: /modo de sala/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /modo tor/i })).toBeInTheDocument();
+    expect(screen.getByText(/el modo tor requiere el lanzador local/i)).toBeInTheDocument();
+    expect(screen.getByText('npm run start:tor')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /crear nueva sala/i })).toBeDisabled();
 
-    await user.selectOptions(localeSelect, 'zh-CN');
+    await user.selectOptions(screen.getByLabelText(/idioma/i), 'zh-CN');
     expect(screen.getByRole('radiogroup', { name: /房间模式/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /tor 模式/i })).toBeInTheDocument();
+    expect(screen.getByText(/tor 模式需要本地启动器/i)).toBeInTheDocument();
+    expect(screen.getByText('npm run start:tor')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /创建新房间/i })).toBeDisabled();
 
-    await user.selectOptions(localeSelect, 'pt-br');
-
-    // Select Tor Mode and create room as Host
-    await user.click(screen.getByRole('radio', { name: /modo tor/i }));
-    expect(screen.getByRole('radio', { name: /modo tor/i })).toBeChecked();
-
-    await user.type(screen.getByLabelText(/seu nome/i), 'Ana');
-    await user.click(screen.getByRole('button', { name: /criar nova sala/i }));
+    // Switching back to Normal Mode keeps room creation working normally
+    await user.selectOptions(screen.getByLabelText(/语言/i), 'pt-br');
+    await user.click(screen.getByRole('radio', { name: /modo normal/i }));
+    const enabledCreateBtn = screen.getByRole('button', { name: /criar nova sala/i });
+    expect(enabledCreateBtn).toBeEnabled();
+    await user.click(enabledCreateBtn);
 
     await waitFor(() => {
       expect(screen.getByText(/sua sala foi criada!/i)).toBeInTheDocument();
     });
-
-    // Modo Tor badge visible in header and sidebar
-    const header = screen.getByRole('banner');
-    const sidebar = screen.getByLabelText(/barra lateral da sala/i);
-    expect(within(header).getByText(/modo tor/i)).toBeInTheDocument();
-    expect(within(sidebar).getByText(/modo tor/i)).toBeInTheDocument();
-
-    // Created card highlights .onion address + Room Code + Host readiness instructions
-    expect(screen.getAllByText(V3_ONION_REGEX).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(ROOM_CODE_REGEX).length).toBeGreaterThan(0);
-    expect(screen.getByText(/compartilhe pelo tor browser/i)).toBeInTheDocument();
-    expect(screen.getByText(/sala \.onion pronta/i)).toBeInTheDocument();
-
-    // Copy .onion action works
-    const copyOnionBtn = screen.getByRole('button', { name: /copiar \.onion/i });
-    await user.click(copyOnionBtn);
-    expect(screen.getByRole('button', { name: /\.onion copiado!/i })).toBeInTheDocument();
-
-    // Discreet Tor Browser Safer / Safest security level notice is visible
-    expect(screen.getByText(/safer.*safest|safest/i)).toBeInTheDocument();
+    expect(createRoomSpy).toHaveBeenCalledWith(expect.objectContaining({ mode: 'normal' }));
   });
 
-  it('opens a room in Tor Mode when joining via ?mode=tor or &onion= invite link and exchanges encrypted messages', async () => {
+  it('locks mode to Tor in tor runtime, waits for bootstrapping -> ready, and creates room with real .onion invite link and E2EE', async () => {
     const user = userEvent.setup();
     const hub = new InMemoryTransportHub();
     const baseHostTransport = hub.createTransport();
@@ -140,39 +140,84 @@ describe('PULSO Ticket 07: Tor Mode & Strict MediaPort Blocking', () => {
         transport={hostTransport}
         mediaPort={new FakeMediaPort()}
         initialLocale="pt-br"
+        runtimeInfo={{ runtimeMode: 'tor', torStatus: 'bootstrapping' }}
       />,
     );
     const host = within(hostView.container);
 
-    await user.click(host.getByRole('radio', { name: /modo tor/i }));
-    await user.click(host.getByRole('button', { name: /criar nova sala/i }));
+    // Normal mode is disabled/locked, Tor mode is checked, and creation is disabled during bootstrap
+    const normalRadio = host.getByRole('radio', { name: /modo normal/i });
+    const torRadio = host.getByRole('radio', { name: /modo tor/i });
+    expect(normalRadio).toBeDisabled();
+    expect(torRadio).toBeChecked();
+    expect(host.getByText(/inicializando rede tor/i)).toBeInTheDocument();
+    expect(host.getByRole('button', { name: /criar nova sala/i })).toBeDisabled();
+
+    // Error state shows actionable alert and keeps creation disabled
+    hostView.rerender(
+      <App
+        transport={hostTransport}
+        mediaPort={new FakeMediaPort()}
+        initialLocale="pt-br"
+        runtimeInfo={{ runtimeMode: 'tor', torStatus: 'error' }}
+      />,
+    );
+    expect(host.getByRole('alert')).toHaveTextContent(/falha ao iniciar o daemon tor/i);
+    expect(host.getByRole('button', { name: /criar nova sala/i })).toBeDisabled();
+
+    // Ready state enables creation and displays real .onion address
+    hostView.rerender(
+      <App
+        transport={hostTransport}
+        mediaPort={new FakeMediaPort()}
+        initialLocale="pt-br"
+        runtimeInfo={{ runtimeMode: 'tor', torStatus: 'ready', onionAddress: REAL_ONION }}
+      />,
+    );
+    expect(host.getByText(/serviço \.onion pronto/i)).toBeInTheDocument();
+    expect(host.getByText(REAL_ONION)).toBeInTheDocument();
+
+    const createBtn = host.getByRole('button', { name: /criar nova sala/i });
+    expect(createBtn).toBeEnabled();
+
+    await user.type(host.getByLabelText(/seu nome/i), 'Ana');
+    await user.click(createBtn);
 
     await waitFor(() => {
       expect(host.getByText(/sua sala foi criada!/i)).toBeInTheDocument();
     });
 
     expect(capturedCreates).toHaveLength(1);
-    const createdParams = capturedCreates[0];
-    expect(createdParams.mode).toBe('tor');
-    expect(createdParams.onionAddress).toMatch(/^http:\/\/[a-z2-7]{56}\.onion$/);
+    expect(capturedCreates[0]).toEqual({
+      mode: 'tor',
+      onionAddress: REAL_ONION,
+    });
+
+    // Modo Tor badge visible in header and sidebar, plus copy .onion and Safer/Safest notice
+    const header = host.getByRole('banner');
+    const sidebar = host.getByLabelText(/barra lateral da sala/i);
+    expect(within(header).getByText(/modo tor/i)).toBeInTheDocument();
+    expect(within(sidebar).getByText(/modo tor/i)).toBeInTheDocument();
+    expect(host.getAllByText(V3_ONION_REGEX).length).toBeGreaterThan(0);
+    expect(host.getByText(/safer.*safest|safest/i)).toBeInTheDocument();
+
+    await user.click(host.getByRole('button', { name: /copiar \.onion/i }));
+    expect(host.getByRole('button', { name: /\.onion copiado!/i })).toBeInTheDocument();
 
     await user.click(host.getByRole('button', { name: /compartilhar/i }));
     await waitFor(() => {
       expect(copiedInviteUrl).toContain('&mode=tor#k=');
     });
-    expect(copiedInviteUrl).toMatch(/^http:\/\/[a-z2-7]{56}\.onion\/\?room=/);
+    expect(copiedInviteUrl).toMatch(new RegExp(`^${REAL_ONION.replace('.', '\\.')}/\\?room=[A-Z0-9-]+&mode=tor#k=`));
 
-    const roomCode = host.getAllByText(ROOM_CODE_REGEX)[0].textContent!.trim();
-    const onionHost = createdParams.onionAddress!.replace(/^http:\/\//, '');
-    const inviteHash = new URL(copiedInviteUrl).hash;
-
-    // Guest joins via invite link containing &onion= and #k=
+    // Guest joins via invite link in Tor Browser (.onion runtime) and exchanges encrypted messages
     const guestView = render(
       <App
         transport={hub.createTransport()}
         mediaPort={new FakeMediaPort()}
-        initialUrl={`https://pulso.local/?room=${roomCode}&onion=${onionHost}${inviteHash}`}
+        initialUrl={copiedInviteUrl}
         initialLocale="pt-br"
+        runtimeInfo={{ runtimeMode: 'tor', torStatus: 'ready', onionAddress: REAL_ONION }}
       />,
     );
     const guest = within(guestView.container);
@@ -181,13 +226,10 @@ describe('PULSO Ticket 07: Tor Mode & Strict MediaPort Blocking', () => {
       expect(guest.getAllByText(/2 pessoas online/i).length).toBeGreaterThan(0);
     });
 
-    // Guest sees Modo Tor badge, guest readiness status, .onion address, and security-level notice
     expect(within(guest.getByRole('banner')).getByText(/modo tor/i)).toBeInTheDocument();
     expect(guest.getByText(/conectado via modo tor/i)).toBeInTheDocument();
-    expect(guest.getAllByText(V3_ONION_REGEX).length).toBeGreaterThan(0);
     expect(guest.getByText(/safer.*safest/i)).toBeInTheDocument();
 
-    // Encrypted ephemeral messaging works normally in Tor Mode
     const hostComposer = host.getByLabelText(/^mensagem efêmera$/i);
     await user.type(hostComposer, 'Mensagem cifrada sobre Tor.{enter}');
 
@@ -232,11 +274,15 @@ describe('PULSO Ticket 07: Tor Mode & Strict MediaPort Blocking', () => {
     const guestSpies = spyOnAllMediaPortMethods(guestMedia);
 
     const hostView = render(
-      <App transport={hostTransport} mediaPort={hostMedia} initialLocale="en" />,
+      <App
+        transport={hostTransport}
+        mediaPort={hostMedia}
+        initialLocale="en"
+        runtimeInfo={{ runtimeMode: 'tor', torStatus: 'ready', onionAddress: REAL_ONION }}
+      />,
     );
     const host = within(hostView.container);
 
-    await user.click(host.getByRole('radio', { name: /tor mode/i }));
     await user.click(host.getByRole('button', { name: /create new room/i }));
 
     await waitFor(() => {
@@ -249,8 +295,9 @@ describe('PULSO Ticket 07: Tor Mode & Strict MediaPort Blocking', () => {
       <App
         transport={hub.createTransport()}
         mediaPort={guestMedia}
-        initialUrl={`https://pulso.local/?room=${roomCode}&mode=tor`}
+        initialUrl={`${REAL_ONION}/?room=${roomCode}&mode=tor`}
         initialLocale="en"
+        runtimeInfo={{ runtimeMode: 'tor', torStatus: 'ready', onionAddress: REAL_ONION }}
       />,
     );
     const guest = within(guestView.container);
@@ -259,7 +306,6 @@ describe('PULSO Ticket 07: Tor Mode & Strict MediaPort Blocking', () => {
       expect(guest.getAllByText(/2 people online/i).length).toBeGreaterThan(0);
     });
 
-    // Video call button in RoomHeader is explicitly disabled with privacy explanation
     const hostHeader = host.getByRole('banner');
     const hostVideoBtn = within(hostHeader).getByRole('button', { name: /start video call/i });
     expect(hostVideoBtn).toBeDisabled();
@@ -273,12 +319,10 @@ describe('PULSO Ticket 07: Tor Mode & Strict MediaPort Blocking', () => {
     expect(guestVideoBtn).toBeDisabled();
     expect(guestVideoBtn).toHaveAttribute('aria-disabled', 'true');
 
-    // Attempt to click/fireEvent on the disabled Video Call button
     await user.click(hostVideoBtn);
     fireEvent.click(hostVideoBtn);
     expect(host.queryByRole('dialog')).not.toBeInTheDocument();
 
-    // Emit a rogue incoming call_signal to Host transport: must be completely ignored
     hostListeners.forEach((listener) =>
       listener({
         type: 'call_signal',
@@ -290,7 +334,6 @@ describe('PULSO Ticket 07: Tor Mode & Strict MediaPort Blocking', () => {
       }),
     );
 
-    // Confirm zero MediaPort methods were ever called on Host or Guest
     for (const spy of [...hostSpies, ...guestSpies]) {
       expect(spy).not.toHaveBeenCalled();
     }
