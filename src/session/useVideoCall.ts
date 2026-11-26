@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CallLayout, Participant, TransportEvent } from '../domain/types';
+import type { CallLayout, Participant, RoomMode, TransportEvent } from '../domain/types';
 import { BrowserMediaPort } from '../media/BrowserMediaPort';
-import type { MediaErrorCode, MediaPort, MediaPortEvent, MediaStateSnapshot } from '../media/MediaPort';
+import {
+  createInitialMediaSnapshot,
+  type MediaErrorCode,
+  type MediaPort,
+  type MediaPortEvent,
+  type MediaStateSnapshot,
+} from '../media/MediaPort';
 import type { RoomTransport } from '../transport/RoomTransport';
 
 export type RemoteCallNoticeKind = 'muted' | 'cameraOff' | 'leftCall';
@@ -12,6 +18,7 @@ export interface UseVideoCallOptions {
   localParticipant: Participant | null;
   remoteParticipant: Participant | null;
   isInRoom: boolean;
+  roomMode?: RoomMode;
 }
 
 export interface VideoCallController {
@@ -42,11 +49,13 @@ export function useVideoCall({
   mediaPort: providedMediaPort,
   localParticipant,
   isInRoom,
+  roomMode = 'normal',
 }: UseVideoCallOptions): VideoCallController {
+  const isTorMode = roomMode === 'tor';
   const ownsMediaPortRef = useRef(false);
   const mediaPortRef = useRef<MediaPort | null>(null);
 
-  if (!mediaPortRef.current) {
+  if (!isTorMode && !mediaPortRef.current) {
     if (providedMediaPort) {
       mediaPortRef.current = providedMediaPort;
       ownsMediaPortRef.current = false;
@@ -55,15 +64,29 @@ export function useVideoCall({
       ownsMediaPortRef.current = true;
     }
   }
-  const mediaPort = mediaPortRef.current;
 
-  const [snapshot, setSnapshot] = useState<MediaStateSnapshot>(() => mediaPort.getSnapshot());
+  const [snapshot, setSnapshot] = useState<MediaStateSnapshot>(() =>
+    createInitialMediaSnapshot(),
+  );
   const [previewOpen, setPreviewOpen] = useState(false);
   const [layout, setLayout] = useState<CallLayout>('hybrid');
   const [focusChatOpen, setFocusChatOpen] = useState(false);
   const [activeNotices, setActiveNotices] = useState<RemoteCallNoticeKind[]>([]);
 
   useEffect(() => {
+    if (isTorMode || !isInRoom) {
+      setPreviewOpen(false);
+      setLayout('hybrid');
+      setFocusChatOpen(false);
+      setActiveNotices([]);
+      setSnapshot(createInitialMediaSnapshot());
+      return;
+    }
+
+    const mediaPort = mediaPortRef.current;
+    if (!mediaPort) return;
+
+    setSnapshot(mediaPort.getSnapshot());
     mediaPort.setSignalSender((signal) => transport.sendCallSignal(signal));
 
     const unsubscribeMedia = mediaPort.subscribe((event: MediaPortEvent) => {
@@ -109,27 +132,26 @@ export function useVideoCall({
       unsubscribeMedia();
       unsubscribeTransport();
       mediaPort.setSignalSender(null);
-      if (ownsMediaPortRef.current) {
-        mediaPort.dispose();
-      }
-    };
-  }, [mediaPort, transport]);
-
-  useEffect(() => {
-    if (!isInRoom) {
-      setPreviewOpen(false);
-      setLayout('hybrid');
-      setFocusChatOpen(false);
-      setActiveNotices([]);
-      if (mediaPort.getSnapshot().phase === 'previewing') {
+      const currentPhase = mediaPort.getSnapshot().phase;
+      if (currentPhase === 'previewing') {
         mediaPort.stopPreview();
-      } else if (mediaPort.getSnapshot().phase === 'active') {
+      } else if (currentPhase === 'active') {
         void mediaPort.endCall();
       }
-    }
-  }, [isInRoom, mediaPort]);
+    };
+  }, [isInRoom, isTorMode, transport]);
+
+  useEffect(() => {
+    return () => {
+      if (ownsMediaPortRef.current && mediaPortRef.current) {
+        mediaPortRef.current.dispose();
+      }
+    };
+  }, []);
 
   const openPreview = useCallback(async () => {
+    const mediaPort = mediaPortRef.current;
+    if (isTorMode || !isInRoom || !mediaPort) return;
     mediaPort.clearError();
     const ok = await mediaPort.startPreview();
     if (ok) {
@@ -137,15 +159,18 @@ export function useVideoCall({
     } else {
       setPreviewOpen(false);
     }
-  }, [mediaPort]);
+  }, [isInRoom, isTorMode]);
 
   const closePreview = useCallback(() => {
-    mediaPort.stopPreview();
     setPreviewOpen(false);
-  }, [mediaPort]);
+    const mediaPort = mediaPortRef.current;
+    if (isTorMode || !mediaPort) return;
+    mediaPort.stopPreview();
+  }, [isTorMode]);
 
   const confirmStartCall = useCallback(async () => {
-    if (!localParticipant) return;
+    const mediaPort = mediaPortRef.current;
+    if (isTorMode || !isInRoom || !localParticipant || !mediaPort) return;
     setPreviewOpen(false);
     const current = mediaPort.getSnapshot();
     const ok = await mediaPort.startCall({
@@ -160,43 +185,55 @@ export function useVideoCall({
       setFocusChatOpen(false);
       setActiveNotices((prev) => prev.filter((k) => k !== 'leftCall'));
     }
-  }, [localParticipant, mediaPort]);
+  }, [isInRoom, isTorMode, localParticipant]);
 
   const endCall = useCallback(async () => {
     setPreviewOpen(false);
     setLayout('hybrid');
     setFocusChatOpen(false);
+    const mediaPort = mediaPortRef.current;
+    if (isTorMode || !mediaPort) return;
     await mediaPort.endCall();
-  }, [mediaPort]);
+  }, [isTorMode]);
 
   const toggleMic = useCallback(async () => {
+    const mediaPort = mediaPortRef.current;
+    if (isTorMode || !mediaPort) return;
     await mediaPort.setMicEnabled(!mediaPort.getSnapshot().micEnabled);
-  }, [mediaPort]);
+  }, [isTorMode]);
 
   const toggleCamera = useCallback(async () => {
+    const mediaPort = mediaPortRef.current;
+    if (isTorMode || !mediaPort) return;
     await mediaPort.setCameraEnabled(!mediaPort.getSnapshot().cameraEnabled);
-  }, [mediaPort]);
+  }, [isTorMode]);
 
   const toggleScreenShare = useCallback(async () => {
+    const mediaPort = mediaPortRef.current;
+    if (isTorMode || !mediaPort) return;
     if (mediaPort.getSnapshot().screenSharing) {
       await mediaPort.stopScreenShare();
     } else {
       await mediaPort.startScreenShare();
     }
-  }, [mediaPort]);
+  }, [isTorMode]);
 
   const selectCamera = useCallback(
     async (deviceId: string) => {
+      const mediaPort = mediaPortRef.current;
+      if (isTorMode || !mediaPort) return;
       await mediaPort.selectCamera(deviceId);
     },
-    [mediaPort],
+    [isTorMode],
   );
 
   const selectMicrophone = useCallback(
     async (deviceId: string) => {
+      const mediaPort = mediaPortRef.current;
+      if (isTorMode || !mediaPort) return;
       await mediaPort.selectMicrophone(deviceId);
     },
-    [mediaPort],
+    [isTorMode],
   );
 
   const dismissNotice = useCallback((kind: RemoteCallNoticeKind) => {
@@ -204,20 +241,22 @@ export function useVideoCall({
   }, []);
 
   const dismissError = useCallback(() => {
+    const mediaPort = mediaPortRef.current;
+    if (isTorMode || !mediaPort) return;
     mediaPort.clearError();
-  }, [mediaPort]);
+  }, [isTorMode]);
 
-  const isCallActive = snapshot.phase === 'active';
+  const isCallActive = !isTorMode && snapshot.phase === 'active';
 
   return useMemo(
     () => ({
       snapshot,
       isCallActive,
-      previewOpen,
+      previewOpen: !isTorMode && previewOpen,
       layout,
       focusChatOpen,
-      activeNotices,
-      error: snapshot.error,
+      activeNotices: isTorMode ? [] : activeNotices,
+      error: isTorMode ? null : snapshot.error,
       openPreview,
       closePreview,
       confirmStartCall,
@@ -241,6 +280,8 @@ export function useVideoCall({
       endCall,
       focusChatOpen,
       isCallActive,
+      isInRoom,
+      isTorMode,
       layout,
       openPreview,
       previewOpen,

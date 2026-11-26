@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ChevronLeft, MessageSquare, X } from 'lucide-react';
-import type { ConnectionStatus, EphemeralMessage, Participant } from '../domain/types';
+import { AlertTriangle, ChevronLeft, Info, MessageSquare, VideoOff, X } from 'lucide-react';
+import type { ConnectionStatus, EphemeralMessage, Participant, RoomMode } from '../domain/types';
 import { useI18n } from '../i18n';
 import type { MediaErrorCode } from '../media/MediaPort';
 import {
@@ -20,6 +20,8 @@ import { VideoCallStage } from './video/VideoCallStage';
 
 interface RoomScreenProps {
   roomCode: string;
+  roomMode?: RoomMode;
+  onionAddress?: string | null;
   inviteUrl: string;
   connectionStatus?: ConnectionStatus;
   isHost: boolean;
@@ -42,6 +44,8 @@ interface RoomScreenProps {
 
 export function RoomScreen({
   roomCode,
+  roomMode = 'normal',
+  onionAddress,
   inviteUrl,
   connectionStatus,
   isHost,
@@ -62,18 +66,22 @@ export function RoomScreen({
   onLeaveRoom,
 }: RoomScreenProps) {
   const { t } = useI18n();
+  const isTorMode = roomMode === 'tor';
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedOnion, setCopiedOnion] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [sasModalOpen, setSasModalOpen] = useState(false);
   const codeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const linkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (codeTimerRef.current) clearTimeout(codeTimerRef.current);
       if (linkTimerRef.current) clearTimeout(linkTimerRef.current);
+      if (onionTimerRef.current) clearTimeout(onionTimerRef.current);
     };
   }, []);
 
@@ -89,6 +97,14 @@ export function RoomScreen({
     setCopiedLink(true);
     if (linkTimerRef.current) clearTimeout(linkTimerRef.current);
     linkTimerRef.current = setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  const handleCopyOnion = () => {
+    if (!onionAddress) return;
+    void copyToClipboard(onionAddress);
+    setCopiedOnion(true);
+    if (onionTimerRef.current) clearTimeout(onionTimerRef.current);
+    onionTimerRef.current = setTimeout(() => setCopiedOnion(false), 2000);
   };
 
   const remoteParticipant = participants.find((p) => p.id !== localParticipant.id);
@@ -107,7 +123,7 @@ export function RoomScreen({
     leftCall: t.videoCall.peerLeftCall(remoteName),
   };
 
-  const isCallActive = videoCall?.isCallActive ?? false;
+  const isCallActive = !isTorMode && (videoCall?.isCallActive ?? false);
   const activeLayout = videoCall?.layout ?? 'hybrid';
   const isFocusLayout = isCallActive && activeLayout === 'focus';
   const isHybridLayout = isCallActive && activeLayout === 'hybrid';
@@ -125,14 +141,18 @@ export function RoomScreen({
     <>
       <MessageList
         roomCode={roomCode}
+        roomMode={roomMode}
+        onionAddress={onionAddress}
         isHost={isHost}
         localParticipantId={localParticipant.id}
         messages={messages}
         typingParticipantName={typingParticipantName}
         copiedCode={copiedCode}
         copiedLink={copiedLink}
+        copiedOnion={copiedOnion}
         onCopyCode={handleCopyCode}
         onShareLink={handleCopyLink}
+        onCopyOnion={handleCopyOnion}
       />
       <MessageComposer
         onSendMessage={onSendMessage}
@@ -144,6 +164,8 @@ export function RoomScreen({
     <div className="h-screen w-full flex overflow-hidden bg-[#F8F9FC] dark:bg-[#1A1C2A] transition-colors">
       <RoomSidebar
         roomCode={roomCode}
+        roomMode={roomMode}
+        onionAddress={onionAddress}
         localParticipant={localParticipant}
         participants={participants}
         copiedCode={copiedCode}
@@ -162,12 +184,13 @@ export function RoomScreen({
       <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
         <RoomHeader
           roomCode={roomCode}
+          roomMode={roomMode}
           connectionStatus={connectionStatus}
           participants={participants}
           copiedCode={copiedCode}
           copiedLink={copiedLink}
           isCallActive={isCallActive}
-          onStartVideoCall={videoCall ? () => void videoCall.openPreview() : undefined}
+          onStartVideoCall={!isTorMode && videoCall ? () => void videoCall.openPreview() : undefined}
           e2eeReady={e2eeReady}
           inactivityRemainingMs={inactivityRemainingMs}
           inactivityAlertLevel={inactivityAlertLevel}
@@ -218,7 +241,20 @@ export function RoomScreen({
           </div>
         )}
 
-        {videoCall?.error && (
+        {isTorMode && (
+          <div className="mx-4 sm:mx-5 mt-3 rounded-xl border border-purple-200 dark:border-purple-500/30 bg-purple-50/80 dark:bg-purple-500/10 px-4 py-2.5 text-xs text-purple-950 dark:text-purple-100 space-y-1">
+            <p id="tor-video-blocked-notice" className="flex items-center gap-2 font-medium">
+              <VideoOff className="h-3.5 w-3.5 shrink-0 text-purple-700 dark:text-purple-300" aria-hidden="true" />
+              <span>{t.videoCall.torBlockedNotice}</span>
+            </p>
+            <p className="flex items-start gap-2 text-[11px] text-purple-800/90 dark:text-purple-200/90 leading-relaxed">
+              <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-purple-600 dark:text-purple-300" aria-hidden="true" />
+              <span>{t.torMode.securityLevelNotice}</span>
+            </p>
+          </div>
+        )}
+
+        {!isTorMode && videoCall?.error && (
           <div
             role="alert"
             className="mx-4 sm:mx-5 mt-3 flex items-center justify-between gap-3 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/15 px-4 py-2.5 text-xs font-medium text-amber-900 dark:text-amber-200"
@@ -238,7 +274,7 @@ export function RoomScreen({
           </div>
         )}
 
-        {videoCall && videoCall.activeNotices.length > 0 && (
+        {!isTorMode && videoCall && videoCall.activeNotices.length > 0 && (
           <div className="mx-4 sm:mx-5 mt-2 space-y-1.5">
             {videoCall.activeNotices.map((kind) => (
               <div
@@ -369,7 +405,7 @@ export function RoomScreen({
         )}
       </div>
 
-      {videoCall && (
+      {!isTorMode && videoCall && (
         <VideoPreviewModal
           open={videoCall.previewOpen}
           localName={localParticipant.displayName}

@@ -156,9 +156,15 @@ export const en: TranslationDictionary = {
   },
   torMode: {
     badge: 'Tor Mode',
+    onionAddressLabel: '.onion address',
+    copyOnion: 'Copy .onion',
+    onionCopied: '.onion copied!',
     onionInstructionsTitle: 'Share via Tor Browser',
     onionInstructionsBody: 'Share the .onion address and Room Code only over a trusted channel.',
-    securityLevelNotice: 'If Tor Browser security level blocks scripts on .onion HTTP, allow scripts for this room when needed.',
+    hostReadyStatus: 'Tor .onion room ready: share the .onion address, room code, or link via Tor Browser.',
+    guestReadyStatus: 'Connected in Tor Mode (encrypted text only). Audio and video remain blocked.',
+    textOnlyNotice: 'Encrypted text only',
+    securityLevelNotice: 'In Tor Browser Safer (on http:// .onion) or Safest security levels, allow JavaScript for this .onion address so client-side E2EE can run.',
   },
   privacy: {
     settingsTitle: 'Privacy & anti-capture',

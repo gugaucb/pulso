@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { AlertCircle, Globe, Loader2, Moon, PlusCircle, Sun } from 'lucide-react';
+import { AlertCircle, Globe, Loader2, Moon, PlusCircle, Shield, Sun } from 'lucide-react';
 import { formatRoomCode, isValidRoomCode, normalizeRoomCode } from '../domain/roomCode';
-import type { ConnectionStatus, Locale, RoomErrorCode } from '../domain/types';
+import type { ConnectionStatus, Locale, RoomErrorCode, RoomMode } from '../domain/types';
 import { LOCALE_OPTIONS, useI18n } from '../i18n';
 import { useTheme } from '../theme/ThemeContext';
 import { PulsoLogo } from './PulsoLogo';
@@ -9,7 +9,7 @@ import { PulsoLogo } from './PulsoLogo';
 interface EntryScreenProps {
   status: ConnectionStatus;
   errorCode: RoomErrorCode | null;
-  onCreateRoom: (displayName: string) => Promise<void>;
+  onCreateRoom: (displayName: string, mode?: RoomMode) => Promise<void>;
   onJoinRoom: (roomCode: string, displayName: string) => Promise<void>;
   onClearError: () => void;
 }
@@ -25,6 +25,7 @@ export function EntryScreen({
   const { theme, toggleTheme } = useTheme();
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [selectedMode, setSelectedMode] = useState<RoomMode>('normal');
   const [touched, setTouched] = useState(false);
 
   const isConnecting = status === 'connecting';
@@ -54,7 +55,7 @@ export function EntryScreen({
 
   const handleCreateClick = async () => {
     onClearError();
-    await onCreateRoom(displayName);
+    await onCreateRoom(displayName, selectedMode);
   };
 
   const isDark = theme === 'dark';
@@ -189,6 +190,89 @@ export function EntryScreen({
             {t.entry.orDivider}
           </span>
         </div>
+
+        <fieldset
+          role="radiogroup"
+          aria-labelledby="entry-mode-label"
+          className="mb-3"
+        >
+          <legend
+            id="entry-mode-label"
+            className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2"
+          >
+            {t.entry.modeLabel}
+          </legend>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <label
+              className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition cursor-pointer ${
+                selectedMode === 'normal'
+                  ? 'border-[#5B3DF5] bg-[#EEF0FF]/70 dark:bg-[#2D2856]/60 dark:border-[#6344F5]'
+                  : 'border-slate-200 dark:border-[#2E3248] bg-slate-50/70 dark:bg-[#141522] hover:border-slate-300 dark:hover:border-slate-600'
+              }`}
+            >
+              <input
+                type="radio"
+                name="roomMode"
+                value="normal"
+                checked={selectedMode === 'normal'}
+                onChange={() => setSelectedMode('normal')}
+                disabled={isConnecting}
+                aria-labelledby="mode-normal-title"
+                aria-describedby="mode-normal-desc"
+                className="mt-0.5 accent-[#5B3DF5]"
+              />
+              <span className="min-w-0">
+                <span
+                  id="mode-normal-title"
+                  className="block text-xs font-semibold text-[#111827] dark:text-slate-100"
+                >
+                  {t.entry.normalMode}
+                </span>
+                <span
+                  id="mode-normal-desc"
+                  className="mt-0.5 block text-[11px] leading-snug text-slate-600 dark:text-slate-300"
+                >
+                  {t.entry.normalModeDescription}
+                </span>
+              </span>
+            </label>
+
+            <label
+              className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition cursor-pointer ${
+                selectedMode === 'tor'
+                  ? 'border-[#5B3DF5] bg-[#EEF0FF]/70 dark:bg-[#2D2856]/60 dark:border-[#6344F5]'
+                  : 'border-slate-200 dark:border-[#2E3248] bg-slate-50/70 dark:bg-[#141522] hover:border-slate-300 dark:hover:border-slate-600'
+              }`}
+            >
+              <input
+                type="radio"
+                name="roomMode"
+                value="tor"
+                checked={selectedMode === 'tor'}
+                onChange={() => setSelectedMode('tor')}
+                disabled={isConnecting}
+                aria-labelledby="mode-tor-title"
+                aria-describedby="mode-tor-desc"
+                className="mt-0.5 accent-[#5B3DF5]"
+              />
+              <span className="min-w-0">
+                <span
+                  id="mode-tor-title"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#111827] dark:text-slate-100"
+                >
+                  <Shield className="h-3 w-3 text-[#5B3DF5] dark:text-[#818CF8]" aria-hidden="true" />
+                  <span>{t.entry.torMode}</span>
+                </span>
+                <span
+                  id="mode-tor-desc"
+                  className="mt-0.5 block text-[11px] leading-snug text-slate-600 dark:text-slate-300"
+                >
+                  {t.entry.torModeDescription}
+                </span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
 
         <button
           type="button"

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, Check, CheckCircle2, Clock, Copy, Share2 } from 'lucide-react';
-import type { EphemeralMessage } from '../domain/types';
+import { ArrowDown, Check, CheckCircle2, Clock, Copy, Lock, Share2 } from 'lucide-react';
+import type { EphemeralMessage, RoomMode } from '../domain/types';
 import { formatRelativeTime, useI18n } from '../i18n';
 import { getInitials } from '../utils/formatters';
 
@@ -12,14 +12,18 @@ function isNearBottom(element: HTMLElement): boolean {
 
 interface MessageListProps {
   roomCode: string;
+  roomMode?: RoomMode;
+  onionAddress?: string | null;
   isHost: boolean;
   localParticipantId: string;
   messages: EphemeralMessage[];
   typingParticipantName?: string | null;
   copiedCode: boolean;
   copiedLink: boolean;
+  copiedOnion?: boolean;
   onCopyCode: () => void;
   onShareLink: () => void;
+  onCopyOnion?: () => void;
 }
 
 function TypingIndicator({ participantName }: { participantName: string }) {
@@ -45,15 +49,20 @@ function TypingIndicator({ participantName }: { participantName: string }) {
 
 export function MessageList({
   roomCode,
+  roomMode = 'normal',
+  onionAddress,
   isHost,
   localParticipantId,
   messages,
   typingParticipantName,
   copiedCode,
   copiedLink,
+  copiedOnion = false,
   onCopyCode,
   onShareLink,
+  onCopyOnion,
 }: MessageListProps) {
+  const isTorMode = roomMode === 'tor';
   const { locale, t } = useI18n();
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -100,9 +109,57 @@ export function MessageList({
               {roomCode}
             </p>
 
-            <p className="mt-2.5 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-              {t.room.emptyHostInviteHint}
-            </p>
+            {isTorMode ? (
+              <div className="mt-4 rounded-xl border border-purple-200 dark:border-purple-500/35 bg-purple-50/70 dark:bg-purple-500/10 p-3.5 text-left space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-purple-800 dark:text-purple-200">
+                    <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>{t.torMode.onionInstructionsTitle}</span>
+                  </span>
+                </div>
+                {onionAddress && (
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                      {t.torMode.onionAddressLabel}
+                    </p>
+                    <div className="flex items-center justify-between gap-2 rounded-lg border border-purple-200/80 dark:border-purple-500/30 bg-white dark:bg-[#141522] px-2.5 py-2">
+                      <code className="font-mono-tabular text-xs text-[#111827] dark:text-slate-100 break-all">
+                        {onionAddress}
+                      </code>
+                      {onCopyOnion && (
+                        <button
+                          type="button"
+                          onClick={onCopyOnion}
+                          className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-[#2E3248] bg-slate-50 dark:bg-[#1B1D2C] hover:bg-slate-100 dark:hover:bg-[#2B2F45] px-2.5 py-1 text-[11px] font-semibold text-[#111827] dark:text-slate-100 transition cursor-pointer"
+                        >
+                          {copiedOnion ? (
+                            <>
+                              <Check className="h-3 w-3 text-[#22C55E]" aria-hidden="true" />
+                              <span>{t.torMode.onionCopied}</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3 w-3" aria-hidden="true" />
+                              <span>{t.torMode.copyOnion}</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <p className="text-xs leading-relaxed text-slate-700 dark:text-slate-200">
+                  {t.torMode.hostReadyStatus}
+                </p>
+                <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                  {t.torMode.onionInstructionsBody}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-2.5 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                {t.room.emptyHostInviteHint}
+              </p>
+            )}
 
             <div className="mt-5 grid grid-cols-2 gap-3">
               <button
@@ -148,10 +205,20 @@ export function MessageList({
             </div>
           </section>
         ) : (
-          <div className="text-center max-w-sm space-y-2">
+          <div className="text-center max-w-md space-y-2.5">
             <p className="text-sm font-semibold text-[#111827] dark:text-slate-100">
               {t.room.connectedToRoom(roomCode)}
             </p>
+            {isTorMode && (
+              <div className="rounded-xl border border-purple-200 dark:border-purple-500/35 bg-purple-50/70 dark:bg-purple-500/10 px-4 py-3 text-xs text-purple-900 dark:text-purple-100 space-y-1.5">
+                <p className="font-medium">{t.torMode.guestReadyStatus}</p>
+                {onionAddress && (
+                  <p className="font-mono-tabular text-[11px] text-purple-700 dark:text-purple-200 break-all">
+                    {onionAddress}
+                  </p>
+                )}
+              </div>
+            )}
             <p className="text-xs text-slate-600 dark:text-slate-400">
               {t.room.emptyGuestHint}
             </p>

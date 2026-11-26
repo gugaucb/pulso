@@ -53,10 +53,13 @@ function AppContent({
     localParticipant: session.localParticipant,
     remoteParticipant,
     isInRoom,
+    roomMode: session.roomMode,
   });
 
+  const isTorMode = session.roomMode === 'tor';
+
   useEffect(() => {
-    if (!isInRoom || !videoCall.isCallActive) return;
+    if (!isInRoom || isTorMode || !videoCall.isCallActive) return;
     void session.renewActivity();
     const heartbeatMs = getVideoCallHeartbeatMs(session.inactivityDurationMs);
     const intervalId = setInterval(() => {
@@ -65,9 +68,15 @@ function AppContent({
     return () => {
       clearInterval(intervalId);
     };
-  }, [isInRoom, session.inactivityDurationMs, session.renewActivity, videoCall.isCallActive]);
+  }, [isInRoom, isTorMode, session.inactivityDurationMs, session.renewActivity, videoCall.isCallActive]);
 
   const participantsWithVideo = session.participants.map((participant) => {
+    if (isTorMode) {
+      return {
+        ...participant,
+        videoEnabled: false,
+      };
+    }
     if (participant.id === session.localParticipant?.id) {
       return {
         ...participant,
@@ -100,6 +109,8 @@ function AppContent({
       {isInRoom && session.roomCode && session.localParticipant ? (
         <RoomScreen
           roomCode={session.roomCode}
+          roomMode={session.roomMode}
+          onionAddress={session.onionAddress}
           inviteUrl={session.inviteUrl ?? session.roomCode}
           connectionStatus={session.status}
           isHost={session.isHost}

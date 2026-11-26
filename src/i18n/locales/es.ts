@@ -156,9 +156,15 @@ export const es: TranslationDictionary = {
   },
   torMode: {
     badge: 'Modo Tor',
+    onionAddressLabel: 'Dirección .onion',
+    copyOnion: 'Copiar .onion',
+    onionCopied: '¡.onion copiado!',
     onionInstructionsTitle: 'Comparte por Tor Browser',
     onionInstructionsBody: 'Envía la dirección .onion junto al Código de la Sala solo por un canal de confianza.',
-    securityLevelNotice: 'Si el nivel de seguridad de Tor Browser bloquea scripts en .onion HTTP, habilítalos para esta sala si es necesario.',
+    hostReadyStatus: 'Sala .onion lista: comparte la dirección .onion, el código de la sala o el enlace por Tor Browser.',
+    guestReadyStatus: 'Conectado en Modo Tor (solo texto cifrado). Audio y vídeo permanecen bloqueados.',
+    textOnlyNotice: 'Solo texto cifrado',
+    securityLevelNotice: 'En los niveles Safer (sobre .onion HTTP) o Safest de Tor Browser, permite JavaScript para esta dirección .onion para ejecutar el cifrado de extremo a extremo.',
   },
   privacy: {
     settingsTitle: 'Privacidad y anticaptura',
