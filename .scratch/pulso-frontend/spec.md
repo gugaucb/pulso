@@ -1,6 +1,6 @@
 # PULSO — Especificação do Frontend (Fase 1)
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 

@@ -4,12 +4,16 @@
 
 **Blocked by:** 01: Tracer bullet: Entrada, criação/acesso à Sala 1:1 e troca básica de Mensagens Efêmeras entre abas, 02: Internacionalização (pt-br, en, es, zh-CN) e tema escuro nativo
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Fronteira única `MediaPort` isolando permissões, enumeração de câmeras/microfones, pré-visualização local, compartilhamento de tela e sessão de áudio/vídeo, acompanhada de implementação real para navegador e fake determinístico para testes.
-- [ ] Botão de câmera no cabeçalho (estado desligado por padrão) abre modal rápido solicitando permissão e exibindo pré-visualização local da câmera, indicador de áudio e seletores de dispositivo antes de iniciar a transmissão.
-- [ ] Ao aceitar, a **Sala** assume o layout híbrido principal: vídeo remoto em destaque na parte superior, pré-visualização local em miniatura no canto superior direito, pílula verde *"Você com câmera ligada"* no canto superior esquerdo, controles flutuantes centralizados (microfone, câmera, compartilhar tela, encerrar chamada em vermelho e alternar layout) e lista de **Mensagens Efêmeras** + compositor preservados abaixo.
-- [ ] Alternância fluida entre os três modos de visualização: layout híbrido principal, modo Picture-in-Picture (vídeo pequeno flutuante sobre a área completa de texto) e modo Foco em Vídeo (vídeo expandido com painel de texto recolhido em aba lateral).
-- [ ] Lista de **Participantes** na barra lateral exibe indicador de vídeo ativo, e avisos claros na interface informam quando o outro **Participante** desliga a câmera, silencia o microfone ou encerra a **Chamada de Vídeo**.
-- [ ] Em negação de permissão de câmera/microfone ou falha de mídia/conexão, exibe mensagem clara de fallback e mantém a troca de **Mensagens Efêmeras** funcionando sem interrupção.
-- [ ] Testes de integração usando `MediaPort` fake validam abertura do preview, ativação da chamada, alternância dos três layouts, toggles de mídia/encerramento, notificações remotas e fallback gracioso em erro/negação.
+- [x] Fronteira única `MediaPort` isolando permissões, enumeração de câmeras/microfones, pré-visualização local, compartilhamento de tela e sessão de áudio/vídeo, acompanhada de implementação real para navegador e fake determinístico para testes.
+- [x] Botão de câmera no cabeçalho (estado desligado por padrão) abre modal rápido solicitando permissão e exibindo pré-visualização local da câmera, indicador de áudio e seletores de dispositivo antes de iniciar a transmissão.
+- [x] Ao aceitar, a **Sala** assume o layout híbrido principal: vídeo remoto em destaque na parte superior, pré-visualização local em miniatura no canto superior direito, pílula verde *"Você com câmera ligada"* no canto superior esquerdo, controles flutuantes centralizados (microfone, câmera, compartilhar tela, encerrar chamada em vermelho e alternar layout) e lista de **Mensagens Efêmeras** + compositor preservados abaixo.
+- [x] Alternância fluida entre os três modos de visualização: layout híbrido principal, modo Picture-in-Picture (vídeo pequeno flutuante sobre a área completa de texto) e modo Foco em Vídeo (vídeo expandido com painel de texto recolhido em aba lateral).
+- [x] Lista de **Participantes** na barra lateral exibe indicador de vídeo ativo, e avisos claros na interface informam quando o outro **Participante** desliga a câmera, silencia o microfone ou encerra a **Chamada de Vídeo**.
+- [x] Em negação de permissão de câmera/microfone ou falha de mídia/conexão, exibe mensagem clara de fallback e mantém a troca de **Mensagens Efêmeras** funcionando sem interrupção.
+- [x] Testes de integração usando `MediaPort` fake validam abertura do preview, ativação da chamada, alternância dos três layouts, toggles de mídia/encerramento, notificações remotas e fallback gracioso em erro/negação.
+
+## Comments
+
+- Resolved on integration branch `feat/pulso-frontend` (merged in `d80f180`, refined in `ba5fcb8`). Verified via `npx tsc --noEmit`, Vitest (`npm test`), `vite build`, and Playwright E2E (`npm run test:e2e`).

@@ -4,13 +4,17 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Projeto frontend configurado com React, TypeScript, Vite, Tailwind CSS, Vitest e Testing Library executando build e testes limpos.
-- [ ] Tela de entrada centralizada com marca **PULSO**, título *"Entre ou crie uma sala"*, campo de **Código da Sala**, nome de exibição opcional (padrão anônimo quando omitido), botão primário *"Entrar na sala"*, divisor *"ou"* e botão secundário *"Criar nova sala"*.
-- [ ] Criação de **Sala** gera **Código da Sala** de 8 caracteres em formato `XXXX-XXXX` sem caracteres ambíguos (`0`, `O`, `1`, `I`, `L`), exibe confirmação *"Sua sala foi criada!"*, botão *"Copiar código"* em 1 clique com feedback visual e botão *"Compartilhar"* com link direto da **Sala**.
-- [ ] Entrada do **Convidado** aceita digitação/colagem com normalização automática para maiúsculas e validação em tempo real, além de entrada automática ao abrir o link compartilhado.
-- [ ] Estados claros de carregamento e erro para **Código da Sala** inválido, **Sala** expirada/inexistente e rejeição limpa quando um terceiro tenta entrar em uma **Sala** 1:1 já ocupada por dois **Participantes**.
-- [ ] Fronteira única `RoomTransport` desacoplada da UI, com implementação padrão de Fase 1 baseada em `BroadcastChannel` + estado em memória permitindo comunicação real entre duas abas.
-- [ ] Tela principal da **Sala** exibe cabeçalho fixo, barra lateral esquerda escura com código atual, lista de **Mensagens Efêmeras** com avatares gerados por iniciais, timestamp relativo e destaque visual nas próprias mensagens, além do compositor para envio.
-- [ ] Testes de integração montam a aplicação no topo com par de `RoomTransport` em memória e validam pelos papéis/rótulos visíveis o fluxo completo **Anfitrião** cria **Sala** → **Convidado** entra → troca bidirecional de **Mensagens Efêmeras** → bloqueio de terceiro entrante.
+- [x] Projeto frontend configurado com React, TypeScript, Vite, Tailwind CSS, Vitest e Testing Library executando build e testes limpos.
+- [x] Tela de entrada centralizada com marca **PULSO**, título *"Entre ou crie uma sala"*, campo de **Código da Sala**, nome de exibição opcional (padrão anônimo quando omitido), botão primário *"Entrar na sala"*, divisor *"ou"* e botão secundário *"Criar nova sala"*.
+- [x] Criação de **Sala** gera **Código da Sala** de 8 caracteres em formato `XXXX-XXXX` sem caracteres ambíguos (`0`, `O`, `1`, `I`, `L`), exibe confirmação *"Sua sala foi criada!"*, botão *"Copiar código"* em 1 clique com feedback visual e botão *"Compartilhar"* com link direto da **Sala**.
+- [x] Entrada do **Convidado** aceita digitação/colagem com normalização automática para maiúsculas e validação em tempo real, além de entrada automática ao abrir o link compartilhado.
+- [x] Estados claros de carregamento e erro para **Código da Sala** inválido, **Sala** expirada/inexistente e rejeição limpa quando um terceiro tenta entrar em uma **Sala** 1:1 já ocupada por dois **Participantes**.
+- [x] Fronteira única `RoomTransport` desacoplada da UI, com implementação padrão de Fase 1 baseada em `BroadcastChannel` + estado em memória permitindo comunicação real entre duas abas.
+- [x] Tela principal da **Sala** exibe cabeçalho fixo, barra lateral esquerda escura com código atual, lista de **Mensagens Efêmeras** com avatares gerados por iniciais, timestamp relativo e destaque visual nas próprias mensagens, além do compositor para envio.
+- [x] Testes de integração montam a aplicação no topo com par de `RoomTransport` em memória e validam pelos papéis/rótulos visíveis o fluxo completo **Anfitrião** cria **Sala** → **Convidado** entra → troca bidirecional de **Mensagens Efêmeras** → bloqueio de terceiro entrante.
+
+## Comments
+
+- Resolved on integration branch `feat/pulso-frontend` (merged in `7a0a142`, refined in `ba5fcb8`). Verified via `npx tsc --noEmit`, Vitest (`npm test`), `vite build`, and Playwright E2E (`npm run test:e2e`).
