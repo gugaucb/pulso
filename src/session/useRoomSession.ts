@@ -372,7 +372,7 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
           setStatus('connected');
           peerPresentRef.current = true;
 
-          if (localPubJwkRef.current && !sentLocalKeyRef.current) {
+          if (localPubJwkRef.current) {
             sentLocalKeyRef.current = true;
             void transport.sendKeyExchange(localPubJwkRef.current, {
               hasSecret: Boolean(secretKeyRef.current),

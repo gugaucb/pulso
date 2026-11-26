@@ -173,4 +173,65 @@ describe('BroadcastChannelTransport', () => {
     host.dispose();
     guest.dispose();
   });
+
+  it('accepts idempotent join retry from the same clientId after an aborted StrictMode mount while still rejecting a 3rd client', async () => {
+    const channels = new Map<string, Set<BroadcastChannelLike & { close: () => void }>>();
+    const asyncChannelFactory = (name: string): BroadcastChannelLike => {
+      const ch: BroadcastChannelLike = {
+        onmessage: null,
+        postMessage(data: unknown) {
+          const set = channels.get(name);
+          if (!set) return;
+          for (const peer of set) {
+            if (peer !== ch) {
+              queueMicrotask(() => {
+                if (channels.get(name)?.has(peer) && peer.onmessage) {
+                  peer.onmessage({ data } as MessageEvent);
+                }
+              });
+            }
+          }
+        },
+        close() {
+          channels.get(name)?.delete(ch);
+        },
+      };
+      const set = channels.get(name) ?? new Set();
+      set.add(ch);
+      channels.set(name, set);
+      return ch;
+    };
+
+    const host = new BroadcastChannelTransport({ channelFactory: asyncChannelFactory, joinTimeoutMs: 100 });
+    const guest = new BroadcastChannelTransport({ channelFactory: asyncChannelFactory, joinTimeoutMs: 100 });
+    const intruder = new BroadcastChannelTransport({ channelFactory: asyncChannelFactory, joinTimeoutMs: 100 });
+
+    const guestEvents: TransportEvent[] = [];
+    const intruderEvents: TransportEvent[] = [];
+    guest.subscribe((e) => guestEvents.push(e));
+    intruder.subscribe((e) => intruderEvents.push(e));
+
+    await host.createRoom({
+      roomCode: 'X9K2-P7M4',
+      displayName: 'Ana',
+      mode: 'normal',
+    });
+
+    // Simulate StrictMode Mount 1 -> Cleanup 1 before async join_accepted arrives -> Mount 2 retry
+    void guest.joinRoom({ roomCode: 'X9K2-P7M4', displayName: 'João' });
+    await guest.leaveRoom();
+    await new Promise((r) => setTimeout(r, 10));
+
+    await guest.joinRoom({ roomCode: 'X9K2-P7M4', displayName: 'João' });
+
+    expect(guestEvents.some((e) => e.type === 'room_joined')).toBe(true);
+    expect(guestEvents.some((e) => e.type === 'room_error' && e.code === 'room_full')).toBe(false);
+
+    await intruder.joinRoom({ roomCode: 'X9K2-P7M4', displayName: 'Intruso' });
+    expect(intruderEvents).toEqual([{ type: 'room_error', code: 'room_full' }]);
+
+    host.dispose();
+    guest.dispose();
+    intruder.dispose();
+  });
 });

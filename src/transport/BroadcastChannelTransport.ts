@@ -9,7 +9,7 @@ import type {
 import type { CreateRoomParams, JoinRoomParams, RoomTransport } from './RoomTransport';
 
 const DEFAULT_INACTIVITY_MS = 60 * 60 * 1000;
-const DEFAULT_JOIN_TIMEOUT_MS = 600;
+const DEFAULT_JOIN_TIMEOUT_MS = 2000;
 
 export interface BroadcastChannelLike {
   onmessage: ((event: MessageEvent) => void) | null;
@@ -73,6 +73,7 @@ export class BroadcastChannelTransport implements RoomTransport {
   private inactivityDurationMs = DEFAULT_INACTIVITY_MS;
   private expiresAt = 0;
   private pendingJoinTimeout: ReturnType<typeof setTimeout> | null = null;
+  private pendingJoinRetryInterval: ReturnType<typeof setInterval> | null = null;
   private pendingJoinResolve: (() => void) | null = null;
   private disposed = false;
 
@@ -103,11 +104,7 @@ export class BroadcastChannelTransport implements RoomTransport {
   }
 
   private resetRoomState(): void {
-    if (this.pendingJoinTimeout) {
-      clearTimeout(this.pendingJoinTimeout);
-      this.pendingJoinTimeout = null;
-    }
-    this.pendingJoinResolve = null;
+    this.settlePendingJoin();
     if (this.channel) {
       this.channel.onmessage = null;
       this.channel.close();
@@ -181,20 +178,26 @@ export class BroadcastChannelTransport implements RoomTransport {
 
     return new Promise<void>((resolve) => {
       this.pendingJoinResolve = resolve;
+      const sendJoinRequest = () => {
+        if (!this.pendingJoinResolve || this.channel !== ch) return;
+        ch.postMessage({
+          kind: 'join_request',
+          requesterId: this.clientId,
+          displayName: params.displayName,
+        } satisfies WireMessage);
+      };
+
+      const retryIntervalMs = Math.min(350, Math.max(25, Math.floor(this.joinTimeoutMs / 3)));
+      this.pendingJoinRetryInterval = setInterval(sendJoinRequest, retryIntervalMs);
+
       this.pendingJoinTimeout = setTimeout(() => {
         if (this.pendingJoinResolve) {
-          const done = this.pendingJoinResolve;
           this.resetRoomState();
           this.emit({ type: 'room_error', code: 'room_not_found' });
-          done();
         }
       }, this.joinTimeoutMs);
 
-      ch.postMessage({
-        kind: 'join_request',
-        requesterId: this.clientId,
-        displayName: params.displayName,
-      } satisfies WireMessage);
+      sendJoinRequest();
     });
   }
 
@@ -202,6 +205,10 @@ export class BroadcastChannelTransport implements RoomTransport {
     if (this.pendingJoinTimeout) {
       clearTimeout(this.pendingJoinTimeout);
       this.pendingJoinTimeout = null;
+    }
+    if (this.pendingJoinRetryInterval) {
+      clearInterval(this.pendingJoinRetryInterval);
+      this.pendingJoinRetryInterval = null;
     }
     const resolve = this.pendingJoinResolve;
     this.pendingJoinResolve = null;
@@ -233,7 +240,7 @@ export class BroadcastChannelTransport implements RoomTransport {
         return;
       }
 
-      if (this.guestParticipant !== null) {
+      if (this.guestParticipant !== null && this.guestParticipant.id !== msg.requesterId) {
         // Strict 1:1 limit: reject without leaking any messages or participant info
         this.channel.postMessage({
           kind: 'join_rejected',
@@ -297,10 +304,8 @@ export class BroadcastChannelTransport implements RoomTransport {
 
     if (msg.kind === 'join_rejected') {
       if (msg.targetId !== this.clientId || !this.pendingJoinResolve) return;
-      const resolve = this.pendingJoinResolve;
       this.resetRoomState();
       this.emit({ type: 'room_error', code: msg.code });
-      resolve();
       return;
     }
 
