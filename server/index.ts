@@ -1,4 +1,5 @@
 import { createServer } from './app';
+import { logOperationalNotice } from './security';
 
 const DEFAULT_PORT = 3001;
 
@@ -18,9 +19,11 @@ async function main(): Promise<void> {
   const shutdown = async () => {
     if (shuttingDown) return;
     shuttingDown = true;
+    logOperationalNotice({ event: 'server_stopping' });
     try {
       await app.close();
     } finally {
+      logOperationalNotice({ event: 'server_stopped' });
       process.exit(0);
     }
   };
@@ -29,10 +32,17 @@ async function main(): Promise<void> {
   process.once('SIGTERM', () => void shutdown());
 
   await app.listen({ host, port });
-  console.info(`PULSO server listening on http://${host}:${port}`);
+  const addressInfo = app.server.address();
+  const actualPort =
+    addressInfo && typeof addressInfo === 'object' ? addressInfo.port : port;
+  logOperationalNotice({ event: 'server_listening', port: actualPort });
 }
 
 main().catch((err) => {
-  console.error('Failed to start PULSO server:', err instanceof Error ? err.message : String(err));
+  const code =
+    err && typeof err === 'object' && 'code' in err && typeof err.code === 'string'
+      ? err.code
+      : undefined;
+  logOperationalNotice({ event: 'server_start_failed', code });
   process.exit(1);
 });

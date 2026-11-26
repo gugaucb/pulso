@@ -1,6 +1,12 @@
 import { useRef, useState } from 'react';
 import { AlertTriangle, ChevronLeft, Info, MessageSquare, RefreshCw, VideoOff, X } from 'lucide-react';
-import type { ConnectionStatus, EphemeralMessage, Participant, RoomMode } from '../domain/types';
+import type {
+  ConnectionStatus,
+  EphemeralMessage,
+  Participant,
+  RoomErrorCode,
+  RoomMode,
+} from '../domain/types';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { useI18n } from '../i18n';
@@ -28,6 +34,8 @@ interface RoomScreenProps {
   onionAddress?: string | null;
   inviteUrl: string;
   connectionStatus?: ConnectionStatus;
+  roomErrorCode?: RoomErrorCode | null;
+  onDismissRoomError?: () => void;
   isHost: boolean;
   localParticipant: Participant;
   participants: Participant[];
@@ -52,6 +60,8 @@ export function RoomScreen({
   onionAddress,
   inviteUrl,
   connectionStatus,
+  roomErrorCode,
+  onDismissRoomError,
   isHost,
   localParticipant,
   participants,
@@ -224,6 +234,28 @@ export function RoomScreen({
           >
             <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
             <span>{t.room.reconnectingBanner}</span>
+          </div>
+        )}
+
+        {roomErrorCode && (
+          <div
+            role="alert"
+            className="pulso-print-hide mx-4 sm:mx-5 mt-2.5 flex items-center justify-between gap-3 rounded-xl border border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-950/50 px-4 py-2.5 text-xs font-medium text-red-800 dark:text-red-200"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" aria-hidden="true" />
+              <span>{t.errors[roomErrorCode]}</span>
+            </div>
+            {onDismissRoomError && (
+              <button
+                type="button"
+                onClick={onDismissRoomError}
+                aria-label={t.errors.dismissError}
+                className="shrink-0 rounded-lg p-1 hover:bg-red-200/60 dark:hover:bg-red-500/20 transition cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
           </div>
         )}
 

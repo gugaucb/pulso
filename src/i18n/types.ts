@@ -36,6 +36,7 @@ export interface TranslationDictionary {
     torModeDescription: string;
   };
   errors: Record<RoomErrorCode, string> & {
+    dismissError: string;
     mediaPermissionDenied: string;
     mediaUnavailable: string;
     mediaConnectionFailed: string;
