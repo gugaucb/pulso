@@ -1,6 +1,6 @@
 # PULSO — Especificação do Backend em RAM, WebSocket, WebRTC e Modo Tor (Fase 2)
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 

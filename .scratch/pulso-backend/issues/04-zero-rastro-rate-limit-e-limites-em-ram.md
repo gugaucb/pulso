@@ -4,11 +4,15 @@
 
 **Blocked by:** 02: Ciclo de vida 1:1, reconexão silenciosa de 30s e Contador de Inatividade autoritativo no servidor
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Registro de logs HTTP desabilitado e logger do servidor configurado para nunca emitir endereços IP, cabeçalhos `User-Agent`, strings de consulta, **Códigos da Sala**, nomes de exibição ou conteúdo de mensagens em stdout ou stderr (emitindo apenas avisos operacionais neutros sem identificadores).
-- [ ] Módulo de proteção em memória RAM gera um segredo efêmero de 256 bits na inicialização (rotacionado periodicamente em intervalos configuráveis) e deriva chaves anônimas via `HMAC-SHA256(ip, segredoRotativoEmRam)` sem jamais armazenar ou registrar endereços IP em claro.
-- [ ] Controle de taxa por origem em RAM limita abertura de conexões WebSocket, criação excessiva de **Salas** e tentativas repetidas falhas de entrada por **Código da Sala** (mitigando enumeração/força bruta), devolvendo erro explícito controlado.
-- [ ] Servidor impõe limite máximo estrito de **64 KB** por frame WebSocket recebido e teto configurável de **Salas** simultâneas ativas em RAM, encerrando ou rejeitando excedentes de forma limpa e previsível.
-- [ ] Interface web traduz e exibe mensagens compreensíveis nos quatro idiomas (`pt-br`, `en`, `es`, `zh-CN`) quando uma solicitação for bloqueada por limite de taxa, tamanho de pacote ou capacidade do servidor.
-- [ ] Testes automatizados exercitam rajadas de tentativas inválidas de **Código da Sala**, excesso de criação de **Salas**, frames acima de 64 KB e excesso de capacidade, e auditam a saída capturada de stdout/stderr durante fluxos completos confirmando ausência de IP, `User-Agent`, **Código da Sala** ou mensagens.
+- [x] Registro de logs HTTP desabilitado e logger do servidor configurado para nunca emitir endereços IP, cabeçalhos `User-Agent`, strings de consulta, **Códigos da Sala**, nomes de exibição ou conteúdo de mensagens em stdout ou stderr (emitindo apenas avisos operacionais neutros sem identificadores).
+- [x] Módulo de proteção em memória RAM gera um segredo efêmero de 256 bits na inicialização (rotacionado periodicamente em intervalos configuráveis) e deriva chaves anônimas via `HMAC-SHA256(ip, segredoRotativoEmRam)` sem jamais armazenar ou registrar endereços IP em claro.
+- [x] Controle de taxa por origem em RAM limita abertura de conexões WebSocket, criação excessiva de **Salas** e tentativas repetidas falhas de entrada por **Código da Sala** (mitigando enumeração/força bruta), devolvendo erro explícito controlado.
+- [x] Servidor impõe limite máximo estrito de **64 KB** por frame WebSocket recebido e teto configurável de **Salas** simultâneas ativas em RAM, encerrando ou rejeitando excedentes de forma limpa e previsível.
+- [x] Interface web traduz e exibe mensagens compreensíveis nos quatro idiomas (`pt-br`, `en`, `es`, `zh-CN`) quando uma solicitação for bloqueada por limite de taxa, tamanho de pacote ou capacidade do servidor.
+- [x] Testes automatizados exercitam rajadas de tentativas inválidas de **Código da Sala**, excesso de criação de **Salas**, frames acima de 64 KB e excesso de capacidade, e auditam a saída capturada de stdout/stderr durante fluxos completos confirmando ausência de IP, `User-Agent`, **Código da Sala** ou mensagens.
+
+## Comments
+
+- Resolved on integration branch `feat/pulso-backend` (merged in `8b106cd`, refined after code review in `10cb0bb` to ensure real >64 KB frames emit `payload_too_large` before closing 1009). Verified via `npm run build`, Vitest (`npm test`, 30/30 files, 149/149 tests), and Playwright E2E (`npm run test:e2e`, 11/11 tests).
