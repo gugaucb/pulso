@@ -117,6 +117,8 @@ export const es: TranslationDictionary = {
     warningBanner: 'La sala se autodestruirá pronto por inactividad.',
     criticalBanner: 'Menos de 1 minuto para expirar. Envía un mensaje o renueva la actividad.',
     renewActivity: 'Renovar contador',
+    confirmPresence: 'Confirmar presencia',
+    expiredPurgeNotice: 'Todos los mensajes efímeros y claves criptográficas fueron eliminados definitivamente de la memoria.',
   },
   videoCall: {
     startCall: 'Iniciar videollamada',

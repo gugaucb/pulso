@@ -102,4 +102,45 @@ describe('BroadcastChannelTransport', () => {
     expect(events).toEqual([{ type: 'room_error', code: 'room_not_found' }]);
     guest.dispose();
   });
+
+  it('synchronizes activity_reset with room inactivityDurationMs from both Host and Guest', async () => {
+    const channelFactory = createFakeBroadcastChannelFactory();
+    const host = new BroadcastChannelTransport({ channelFactory, joinTimeoutMs: 50 });
+    const guest = new BroadcastChannelTransport({ channelFactory, joinTimeoutMs: 50 });
+
+    const hostEvents: TransportEvent[] = [];
+    const guestEvents: TransportEvent[] = [];
+
+    host.subscribe((e) => hostEvents.push(e));
+    guest.subscribe((e) => guestEvents.push(e));
+
+    const beforeCreate = Date.now();
+    await host.createRoom({
+      roomCode: 'X9K2-P7M4',
+      displayName: 'Ana',
+      mode: 'normal',
+      inactivityDurationMs: 120_000,
+    });
+
+    await guest.joinRoom({
+      roomCode: 'X9K2-P7M4',
+      displayName: 'João',
+    });
+
+    await guest.notifyActivity();
+
+    const hostReset = hostEvents.find((e) => e.type === 'activity_reset');
+    const guestReset = guestEvents.find((e) => e.type === 'activity_reset');
+
+    expect(hostReset).toBeDefined();
+    expect(guestReset).toBeDefined();
+    if (hostReset?.type === 'activity_reset' && guestReset?.type === 'activity_reset') {
+      expect(hostReset.expiresAt).toBe(guestReset.expiresAt);
+      expect(hostReset.expiresAt - beforeCreate).toBeLessThan(200_000);
+      expect(hostReset.expiresAt - beforeCreate).toBeGreaterThanOrEqual(119_000);
+    }
+
+    host.dispose();
+    guest.dispose();
+  });
 });

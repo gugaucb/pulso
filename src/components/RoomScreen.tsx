@@ -3,6 +3,10 @@ import { AlertTriangle, ChevronLeft, MessageSquare, X } from 'lucide-react';
 import type { ConnectionStatus, EphemeralMessage, Participant } from '../domain/types';
 import { useI18n } from '../i18n';
 import type { MediaErrorCode } from '../media/MediaPort';
+import {
+  DEFAULT_INACTIVITY_DURATION_MS,
+  type InactivityAlertLevel,
+} from '../session/inactivityTimer';
 import type { RemoteCallNoticeKind, VideoCallController } from '../session/useVideoCall';
 import { copyToClipboard } from '../utils/clipboard';
 import { MessageComposer } from './MessageComposer';
@@ -27,6 +31,9 @@ interface RoomScreenProps {
   sasCode: string | null;
   e2eeReady: boolean;
   hasLinkSecret: boolean;
+  inactivityRemainingMs?: number;
+  inactivityAlertLevel?: InactivityAlertLevel;
+  onRenewActivity?: () => Promise<void>;
   onSendMessage: (text: string) => Promise<void>;
   onTypingChange?: (isTyping: boolean) => void;
   onOpenSettings?: () => void;
@@ -46,6 +53,9 @@ export function RoomScreen({
   sasCode,
   e2eeReady,
   hasLinkSecret,
+  inactivityRemainingMs = DEFAULT_INACTIVITY_DURATION_MS,
+  inactivityAlertLevel = 'normal',
+  onRenewActivity,
   onSendMessage,
   onTypingChange,
   onOpenSettings,
@@ -139,6 +149,9 @@ export function RoomScreen({
         copiedCode={copiedCode}
         copiedLink={copiedLink}
         e2eeReady={e2eeReady}
+        inactivityRemainingMs={inactivityRemainingMs}
+        inactivityAlertLevel={inactivityAlertLevel}
+        onRenewActivity={onRenewActivity ? () => void onRenewActivity() : undefined}
         onCopyCode={handleCopyCode}
         onCopyLink={handleCopyLink}
         onOpenSas={() => setSasModalOpen(true)}
@@ -156,12 +169,54 @@ export function RoomScreen({
           isCallActive={isCallActive}
           onStartVideoCall={videoCall ? () => void videoCall.openPreview() : undefined}
           e2eeReady={e2eeReady}
+          inactivityRemainingMs={inactivityRemainingMs}
+          inactivityAlertLevel={inactivityAlertLevel}
           onCopyCode={handleCopyCode}
           onCopyLink={handleCopyLink}
           onOpenSas={() => setSasModalOpen(true)}
           onOpenSettings={handleOpenSettings}
           onLeaveRoom={() => setLeaveConfirmOpen(true)}
         />
+
+        {inactivityAlertLevel !== 'normal' && (
+          <div
+            role={inactivityAlertLevel === 'critical' ? 'alert' : 'status'}
+            aria-live={inactivityAlertLevel === 'critical' ? 'assertive' : 'polite'}
+            data-inactivity-banner={inactivityAlertLevel}
+            className={`mx-4 sm:mx-5 mt-2.5 flex items-center justify-between gap-3 rounded-xl border px-4 py-2.5 text-xs font-medium transition-colors ${
+              inactivityAlertLevel === 'critical'
+                ? 'border-[#EF4444] bg-red-50 dark:bg-red-500/15 text-red-800 dark:text-red-200'
+                : 'border-[#F59E0B] bg-amber-50 dark:bg-amber-500/15 text-amber-900 dark:text-amber-200'
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertTriangle
+                className={`h-4 w-4 shrink-0 ${
+                  inactivityAlertLevel === 'critical' ? 'text-[#EF4444]' : 'text-[#F59E0B]'
+                }`}
+                aria-hidden="true"
+              />
+              <span>
+                {inactivityAlertLevel === 'critical'
+                  ? t.inactivity.criticalBanner
+                  : t.inactivity.warningBanner}
+              </span>
+            </div>
+            {onRenewActivity && (
+              <button
+                type="button"
+                onClick={() => void onRenewActivity()}
+                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition cursor-pointer ${
+                  inactivityAlertLevel === 'critical'
+                    ? 'bg-[#EF4444] hover:bg-red-600'
+                    : 'bg-[#F59E0B] hover:bg-amber-600'
+                }`}
+              >
+                {t.inactivity.renewActivity}
+              </button>
+            )}
+          </div>
+        )}
 
         {videoCall?.error && (
           <div

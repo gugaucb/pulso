@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Check,
+  Clock,
   Copy,
   Globe,
   Link2,
@@ -14,6 +15,11 @@ import {
 } from 'lucide-react';
 import type { ConnectionStatus, Participant } from '../domain/types';
 import { LOCALE_OPTIONS, useI18n } from '../i18n';
+import {
+  DEFAULT_INACTIVITY_DURATION_MS,
+  formatInactivityDisplay,
+  type InactivityAlertLevel,
+} from '../session/inactivityTimer';
 import { useTheme } from '../theme/ThemeContext';
 
 interface RoomHeaderProps {
@@ -25,6 +31,8 @@ interface RoomHeaderProps {
   isCallActive?: boolean;
   onStartVideoCall?: () => void;
   e2eeReady: boolean;
+  inactivityRemainingMs?: number;
+  inactivityAlertLevel?: InactivityAlertLevel;
   onCopyCode: () => void;
   onCopyLink: () => void;
   onOpenSas: () => void;
@@ -41,6 +49,8 @@ export function RoomHeader({
   isCallActive = false,
   onStartVideoCall,
   e2eeReady,
+  inactivityRemainingMs = DEFAULT_INACTIVITY_DURATION_MS,
+  inactivityAlertLevel = 'normal',
   onCopyCode,
   onCopyLink,
   onOpenSas,
@@ -54,6 +64,13 @@ export function RoomHeader({
 
   const isDark = theme === 'dark';
   const themeAriaLabel = isDark ? t.theme.switchToLight : t.theme.switchToDark;
+  const countdown = formatInactivityDisplay(inactivityRemainingMs, t);
+  const countdownBadgeClass =
+    inactivityAlertLevel === 'critical'
+      ? 'bg-red-50 dark:bg-red-500/15 text-[#B91C1C] dark:text-[#EF4444] border-[#EF4444]/70 font-semibold'
+      : inactivityAlertLevel === 'warning'
+        ? 'bg-amber-50 dark:bg-amber-500/15 text-[#B45309] dark:text-[#F59E0B] border-[#F59E0B]/60 font-semibold'
+        : 'bg-slate-100 dark:bg-[#232638] text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-[#2E3248]';
   const onlineCount = participants.filter((p) => p.online).length;
   const peerPresent = onlineCount >= 2;
   const isConnecting = connectionStatus === 'connecting';
@@ -148,6 +165,13 @@ export function RoomHeader({
             className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none ${statusBadge.pillClass}`}
           >
             {statusBadge.label}
+          </span>
+          <span
+            data-inactivity-level={inactivityAlertLevel}
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium font-mono-tabular leading-none transition-colors ${countdownBadgeClass}`}
+          >
+            <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
+            <span>{countdown.label}</span>
           </span>
         </div>
       </div>

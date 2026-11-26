@@ -33,6 +33,7 @@ type WireMessage =
       mode: RoomMode;
       onionAddress?: string;
       expiresAt: number;
+      inactivityDurationMs: number;
     }
   | { kind: 'join_rejected'; targetId: string; code: 'room_full' | 'room_expired' }
   | { kind: 'participant_left'; senderId: string }
@@ -260,6 +261,7 @@ export class BroadcastChannelTransport implements RoomTransport {
         mode: this.mode,
         onionAddress: this.onionAddress,
         expiresAt: this.expiresAt,
+        inactivityDurationMs: this.inactivityDurationMs,
       } satisfies WireMessage);
 
       this.emit({
@@ -278,6 +280,7 @@ export class BroadcastChannelTransport implements RoomTransport {
       this.mode = msg.mode;
       this.onionAddress = msg.onionAddress;
       this.expiresAt = msg.expiresAt;
+      this.inactivityDurationMs = msg.inactivityDurationMs;
       this.settlePendingJoin();
 
       this.emit({

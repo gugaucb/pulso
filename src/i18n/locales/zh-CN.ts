@@ -117,6 +117,8 @@ export const zhCN: TranslationDictionary = {
     warningBanner: '由于长时间无活动，房间即将自动销毁。',
     criticalBanner: '剩余不足 1 分钟，请发送消息或刷新活动状态。',
     renewActivity: '延长倒计时',
+    confirmPresence: '确认在线',
+    expiredPurgeNotice: '所有阅后即焚消息与加密密钥已从内存中彻底清除。',
   },
   videoCall: {
     startCall: '发起视频通话',

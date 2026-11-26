@@ -6,6 +6,7 @@ import {
   Link2,
   LogOut,
   Moon,
+  RefreshCw,
   Settings,
   ShieldCheck,
   Sun,
@@ -13,6 +14,11 @@ import {
 } from 'lucide-react';
 import type { Locale, Participant } from '../domain/types';
 import { DEFAULT_GUEST_NAMES, LOCALE_OPTIONS, useI18n } from '../i18n';
+import {
+  DEFAULT_INACTIVITY_DURATION_MS,
+  formatInactivityDisplay,
+  type InactivityAlertLevel,
+} from '../session/inactivityTimer';
 import { useTheme } from '../theme/ThemeContext';
 import { getInitials } from '../utils/formatters';
 import { PulsoLogo } from './PulsoLogo';
@@ -24,6 +30,9 @@ interface RoomSidebarProps {
   copiedCode: boolean;
   copiedLink: boolean;
   e2eeReady: boolean;
+  inactivityRemainingMs?: number;
+  inactivityAlertLevel?: InactivityAlertLevel;
+  onRenewActivity?: () => void;
   onCopyCode: () => void;
   onCopyLink: () => void;
   onOpenSas: () => void;
@@ -38,6 +47,9 @@ export function RoomSidebar({
   copiedCode,
   copiedLink,
   e2eeReady,
+  inactivityRemainingMs = DEFAULT_INACTIVITY_DURATION_MS,
+  inactivityAlertLevel = 'normal',
+  onRenewActivity,
   onCopyCode,
   onCopyLink,
   onOpenSas,
@@ -50,6 +62,19 @@ export function RoomSidebar({
 
   const onlineCount = participants.filter((p) => p.online).length;
   const onlineText = t.room.peopleOnline(onlineCount);
+  const countdown = formatInactivityDisplay(inactivityRemainingMs, t);
+  const timerColorClass =
+    inactivityAlertLevel === 'critical'
+      ? 'text-[#EF4444] font-semibold'
+      : inactivityAlertLevel === 'warning'
+        ? 'text-[#F59E0B] font-semibold'
+        : 'text-slate-300';
+  const timerIconColorClass =
+    inactivityAlertLevel === 'critical'
+      ? 'text-[#EF4444]'
+      : inactivityAlertLevel === 'warning'
+        ? 'text-[#F59E0B]'
+        : 'text-slate-400';
 
   return (
     <aside
@@ -151,9 +176,26 @@ export function RoomSidebar({
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
             {t.room.aboutRoom}
           </p>
-          <div className="flex items-center gap-2 text-xs text-slate-300 px-1">
-            <Clock className="h-4 w-4 text-slate-400" aria-hidden="true" />
-            <span>{t.room.expiresIn1h}</span>
+          <div
+            data-inactivity-level={inactivityAlertLevel}
+            className={`flex items-center justify-between gap-2 text-xs px-1 ${timerColorClass}`}
+          >
+            <span className="inline-flex items-center gap-2 min-w-0">
+              <Clock className={`h-4 w-4 shrink-0 ${timerIconColorClass}`} aria-hidden="true" />
+              <span className="font-mono-tabular truncate">{countdown.label}</span>
+            </span>
+            {onRenewActivity && (
+              <button
+                type="button"
+                onClick={onRenewActivity}
+                aria-label={t.inactivity.confirmPresence}
+                title={t.inactivity.confirmPresence}
+                className="shrink-0 inline-flex items-center gap-1 rounded-md bg-[#1B1D2C] hover:bg-slate-700/70 border border-slate-700/70 px-1.5 py-0.5 text-[11px] font-medium text-slate-200 transition cursor-pointer"
+              >
+                <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                <span className="sr-only">{t.inactivity.confirmPresence}</span>
+              </button>
+            )}
           </div>
           <button
             type="button"
