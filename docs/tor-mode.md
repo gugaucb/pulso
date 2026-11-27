@@ -29,8 +29,11 @@ O build do projeto **não** baixa binários automaticamente. Para baixar e verif
 # Visualizar a URL oficial e o destino sem fazer download
 node scripts/fetch-tor-bundle.mjs --dry-run
 
-# Baixar, verificar SHA-256 contra sha256sums-signed-build.txt e extrair para .tor-bin/
+# Baixar, verificar SHA-256 (e PGP se gpg estiver disponível) contra sha256sums-signed-build.txt e extrair para .tor-bin/
 node scripts/fetch-tor-bundle.mjs
+
+# Em CI ou ambientes onde a verificação PGP deve ser obrigatória contra a chave dos Tor Browser Developers:
+node scripts/fetch-tor-bundle.mjs --require-pgp
 
 # Verificar SHA-256 de um arquivo baixado manualmente
 node scripts/fetch-tor-bundle.mjs --verify ./tor-expert-bundle.tar.gz --sha256 <digest-sha256>

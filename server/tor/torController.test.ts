@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { EventEmitter } from 'node:events';
 import {
   chmodSync,
   existsSync,
@@ -27,11 +28,19 @@ import {
   type ControlAsyncEvent,
 } from './controlProtocol';
 import {
+  BUILTIN_SNOWFLAKE_BRIDGES,
+  DEFAULT_BRIDGE_STARTUP_TIMEOUT_MS,
+  DEFAULT_STARTUP_TIMEOUT_MS,
   TOR_DATA_DIR_PREFIX,
   TorController,
+  buildTorrcContent,
   ensureDarwinBinarySigned,
   purgeStaleTorDataDirs,
+  resolveLyrebirdBinary,
   resolveTorBinary,
+  sanitizeCustomBridgeLines,
+  type TorProgressEvent,
+  type TorStallEvent,
 } from './torController';
 
 function createExecutable(filePath: string): string {
@@ -206,6 +215,8 @@ describe('controlProtocol helpers', () => {
       severity: 'NOTICE',
       action: 'BOOTSTRAP',
       progress: 100,
+      tag: 'done',
+      summary: 'Done',
     });
 
     expect(
@@ -328,6 +339,8 @@ describe('ControlPortClient over Duplex transport', () => {
         severity: 'NOTICE',
         action: 'BOOTSTRAP',
         progress: 100,
+        tag: 'done',
+        summary: 'Done',
       },
       {
         type: 'hs_desc',
@@ -897,5 +910,591 @@ describe('TorController real loopback TCP integration', () => {
       await controller.stop().catch(() => {});
       await new Promise<void>((resolve) => tcpServer.close(() => resolve()));
     }
+  });
+});
+
+describe('resolveLyrebirdBinary', () => {
+  const tempDirs: string[] = [];
+
+  function makeTempDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'pulso-lyrebird-'));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    while (tempDirs.length > 0) {
+      const dir = tempDirs.pop();
+      if (dir) {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('resolves pluggable_transports/lyrebird directly relative to tor without pt_config.json and ignores conjure-client', () => {
+    const root = makeTempDir();
+    const torDir = join(root, 'tor');
+    const ptDir = join(torDir, 'pluggable_transports');
+    mkdirSync(ptDir, { recursive: true });
+
+    const torBin = createExecutable(join(torDir, 'tor'));
+    const lyrebirdBin = createExecutable(join(ptDir, 'lyrebird'));
+    createExecutable(join(ptDir, 'conjure-client'));
+
+    expect(resolveLyrebirdBinary(torBin, 'linux', {})).toBe(lyrebirdBin);
+  });
+
+  it('resolves pluggable_transports/lyrebird.exe on win32 and supports PULSO_LYREBIRD_BIN override', () => {
+    const root = makeTempDir();
+    const torDir = join(root, 'tor');
+    const ptDir = join(torDir, 'pluggable_transports');
+    mkdirSync(ptDir, { recursive: true });
+
+    const torExe = join(torDir, 'tor.exe');
+    const lyrebirdExe = join(ptDir, 'lyrebird.exe');
+    writeFileSync(torExe, 'MZ', 'utf8');
+    writeFileSync(lyrebirdExe, 'MZ', 'utf8');
+
+    expect(resolveLyrebirdBinary(torExe, 'win32', {})).toBe(lyrebirdExe);
+
+    const customBin = createExecutable(join(root, 'custom-lyrebird'));
+    expect(resolveLyrebirdBinary(torExe, 'linux', { PULSO_LYREBIRD_BIN: customBin })).toBe(
+      customBin,
+    );
+  });
+
+  it('throws an actionable error when lyrebird is missing even if pt_config.json and conjure-client exist', () => {
+    const root = makeTempDir();
+    const torDir = join(root, 'tor');
+    const ptDir = join(torDir, 'pluggable_transports');
+    mkdirSync(ptDir, { recursive: true });
+
+    const torBin = createExecutable(join(torDir, 'tor'));
+    createExecutable(join(ptDir, 'conjure-client'));
+    writeFileSync(join(ptDir, 'pt_config.json'), '{}', 'utf8');
+
+    expect(() => resolveLyrebirdBinary(torBin, 'linux', {})).toThrow(
+      /not found or non-executable.*PULSO_LYREBIRD_BIN/i,
+    );
+  });
+});
+
+describe('sanitizeCustomBridgeLines and bridge torrc generation', () => {
+  it('accepts obfs4, snowflake, webtunnel, and meek_lite lines with or without Bridge prefix', () => {
+    const rawInput = [
+      '',
+      '# comment from email',
+      'Bridge obfs4 198.51.100.10:443 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA cert=abc+123== iat-mode=0',
+      'webtunnel [2001:db8::1]:443 BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB url=https://example.invalid/wt ver=0.0.1',
+      'snowflake 192.0.2.3:80 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC fingerprint=CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC',
+      'meek_lite 192.0.2.20:80 url=https://example.invalid front=example.org',
+    ].join('\n');
+
+    expect(sanitizeCustomBridgeLines(rawInput)).toEqual([
+      'obfs4 198.51.100.10:443 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA cert=abc+123== iat-mode=0',
+      'webtunnel [2001:db8::1]:443 BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB url=https://example.invalid/wt ver=0.0.1',
+      'snowflake 192.0.2.3:80 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC fingerprint=CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC',
+      'meek_lite 192.0.2.20:80 url=https://example.invalid front=example.org',
+    ]);
+  });
+
+  it('rejects unsupported transports, torrc directive injections, newlines in array items, and redacts bridge IPs in errors', () => {
+    const secretIp = '203.0.113.77:443';
+    const validFingerprint = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+
+    let thrownMessage = '';
+    try {
+      sanitizeCustomBridgeLines(`conjure ${secretIp} ${validFingerprint}`);
+    } catch (err) {
+      thrownMessage = (err as Error).message;
+    }
+    expect(thrownMessage).toMatch(/unsupported bridge transport/i);
+    expect(thrownMessage).not.toContain('203.0.113.77');
+
+    expect(() =>
+      sanitizeCustomBridgeLines([`obfs4 ${secretIp} ${validFingerprint}\nSocksPort 9050`]),
+    ).toThrow();
+
+    expect(() =>
+      sanitizeCustomBridgeLines(`obfs4 ${secretIp} ${validFingerprint}\nSocksPort 9050`),
+    ).toThrow(/unsupported bridge transport/i);
+
+    expect(() =>
+      sanitizeCustomBridgeLines(`obfs4 ${secretIp} ${validFingerprint} cert=abc\\`),
+    ).toThrow();
+
+    expect(() =>
+      sanitizeCustomBridgeLines(`obfs4 ${secretIp} ${validFingerprint} ; ControlPort 9051`),
+    ).toThrow();
+
+    expect(() =>
+      sanitizeCustomBridgeLines(`obfs4 ${secretIp} ${validFingerprint}\x00`),
+    ).toThrow();
+
+    expect(() => sanitizeCustomBridgeLines('   \n# only comments\n')).toThrow(
+      /at least one/i,
+    );
+  });
+
+  it('writes UseBridges 1, ClientTransportPlugin without logging flags, and escaped lyrebird path in torrc', () => {
+    const torrc = buildTorrcContent({
+      dataDir: '/tmp/pulso-tor-123',
+      controlPortFile: '/tmp/pulso-tor-123/control.port',
+      cookieFile: '/tmp/pulso-tor-123/control_auth_cookie',
+      lyrebirdBinaryPath: 'C:\\Program Files\\PULSO\\tor\\pluggable_transports\\lyrebird.exe',
+      bridgeLines: BUILTIN_SNOWFLAKE_BRIDGES,
+    });
+
+    expect(torrc).toContain('UseBridges 1');
+    expect(torrc).toContain(
+      'ClientTransportPlugin meek_lite,obfs4,snowflake,webtunnel exec "C:\\\\Program Files\\\\PULSO\\\\tor\\\\pluggable_transports\\\\lyrebird.exe"',
+    );
+    expect(torrc).not.toContain('-enableLogging');
+    expect(torrc).not.toContain('-unsafeLogging');
+    for (const line of BUILTIN_SNOWFLAKE_BRIDGES) {
+      expect(torrc).toContain(`Bridge ${line}`);
+    }
+  });
+});
+
+function createMockSpawnWithTorrcCapture(
+  cookie: Buffer,
+  portToWrite: number,
+  options: {
+    onSpawn?: (torrcContent: string, torrcMode: number, dataDir: string) => void;
+    createPtState?: boolean;
+  } = {},
+) {
+  return vi.fn((_cmd: string, args: string[]) => {
+    const fIdx = args.indexOf('-f');
+    const torrcPath = fIdx !== -1 ? args[fIdx + 1] : '';
+    const torrcContent = readFileSync(torrcPath, 'utf8');
+    const torrcMode = statSync(torrcPath).mode & 0o777;
+    const dataDir = dirname(torrcPath);
+
+    options.onSpawn?.(torrcContent, torrcMode, dataDir);
+
+    if (options.createPtState) {
+      const ptStateDir = join(dataDir, 'pt_state');
+      mkdirSync(ptStateDir, { recursive: true });
+      writeFileSync(join(ptStateDir, 'state.tmp'), 'ephemeral', 'utf8');
+    }
+
+    const portFileMatch = /^ControlPortWriteToFile\s+(.+)$/m.exec(torrcContent);
+    const cookieFileMatch = /^CookieAuthFile\s+(.+)$/m.exec(torrcContent);
+    if (cookieFileMatch && portFileMatch) {
+      writeFileSync(cookieFileMatch[1].trim(), cookie);
+      writeFileSync(portFileMatch[1].trim(), `PORT=127.0.0.1:${portToWrite}\n`, 'utf8');
+    }
+
+    const child = new EventEmitter() as EventEmitter & {
+      stderr: EventEmitter;
+      stdout: EventEmitter;
+      exitCode: number | null;
+      signalCode: NodeJS.Signals | null;
+      kill: (sig?: NodeJS.Signals) => boolean;
+    };
+    child.stderr = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.exitCode = null;
+    child.signalCode = null;
+    child.kill = vi.fn((sig: NodeJS.Signals = 'SIGTERM') => {
+      child.signalCode = sig;
+      child.emit('exit', null, sig);
+      return true;
+    });
+    return child as unknown as ReturnType<typeof import('node:child_process').spawn>;
+  });
+}
+
+describe('TorController bridge modes, progress phases, stall detection, and zero-trace purge', () => {
+  const tempDirs: string[] = [];
+
+  function makeTempDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'pulso-tor-bridge-'));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    while (tempDirs.length > 0) {
+      const dir = tempDirs.pop();
+      if (dir) {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('writes 0o600 torrc with Snowflake bridges BEFORE spawn, signs lyrebird on darwin, never sends SETCONF, emits PT/HS_DESC progress, and purges torrc + pt_state on stop', async () => {
+    const root = makeTempDir();
+    const torDir = join(root, 'tor');
+    const ptDir = join(torDir, 'pluggable_transports');
+    mkdirSync(ptDir, { recursive: true });
+    const torBin = createExecutable(join(torDir, 'tor'));
+    const lyrebirdBin = createExecutable(join(ptDir, 'lyrebird'));
+    const dataDir = join(root, 'tmp-tor-data');
+
+    const cookie = Buffer.alloc(32, 0x42);
+    const serverNonce = Buffer.alloc(32, 0x24);
+    const serviceId = 'vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd';
+    const [clientStream, serverStream] = createDuplexPair();
+    const commands: string[] = [];
+
+    let buf = '';
+    serverStream.on('data', (chunk: Buffer) => {
+      buf += chunk.toString('utf8');
+      while (buf.includes('\r\n')) {
+        const idx = buf.indexOf('\r\n');
+        const line = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        commands.push(line);
+
+        if (line.startsWith('AUTHCHALLENGE SAFECOOKIE ')) {
+          const clientNonce = Buffer.from(line.slice('AUTHCHALLENGE SAFECOOKIE '.length).trim(), 'hex');
+          const serverHash = computeSafeCookieServerHash(cookie, clientNonce, serverNonce);
+          serverStream.write(
+            `250 AUTHCHALLENGE SERVERHASH=${serverHash.toString('hex')} SERVERNONCE=${serverNonce.toString('hex')}\r\n`,
+          );
+        } else if (line.startsWith('AUTHENTICATE ') || line.startsWith('SETEVENTS ') || line.startsWith('DEL_ONION ')) {
+          serverStream.write('250 OK\r\n');
+        } else if (line.startsWith('ADD_ONION ')) {
+          serverStream.write(`250-ServiceID=${serviceId}\r\n250 OK\r\n`);
+          serverStream.write(
+            '650 STATUS_CLIENT NOTICE BOOTSTRAP PROGRESS=5 TAG=conn_pt SUMMARY="Connecting to pluggable transport"\r\n',
+          );
+          serverStream.write(
+            '650 STATUS_CLIENT NOTICE BOOTSTRAP PROGRESS=10 TAG=handshake_pt SUMMARY="Handshaking with pluggable transport"\r\n',
+          );
+          serverStream.write(
+            '650 STATUS_CLIENT NOTICE BOOTSTRAP PROGRESS=100 TAG=done SUMMARY="Done"\r\n',
+          );
+          serverStream.write(`650 HS_DESC UPLOAD ${serviceId} NO_AUTH $HSD1\r\n`);
+          serverStream.write(`650 HS_DESC UPLOADED ${serviceId} NO_AUTH $HSD1\r\n`);
+        } else if (line === 'SIGNAL SHUTDOWN') {
+          serverStream.write('250 closing\r\n');
+        }
+      }
+    });
+
+    let torrcBeforeSpawn = '';
+    let torrcModeBeforeSpawn = 0;
+    const spawnFn = createMockSpawnWithTorrcCapture(cookie, 49901, {
+      createPtState: true,
+      onSpawn: (torrc, mode) => {
+        torrcBeforeSpawn = torrc;
+        torrcModeBeforeSpawn = mode;
+      },
+    });
+    const execFileSyncFn = vi.fn();
+
+    const controller = new TorController({
+      localPort: 3001,
+      dataDir,
+      torBinaryPath: torBin,
+      bridgeMode: 'snowflake',
+      platform: 'darwin',
+      startupTimeoutMs: 5000,
+      controlFilePollIntervalMs: 10,
+      stopTimeoutMs: 200,
+      spawnFn,
+      connectFn: () => clientStream,
+      execFileSyncFn: execFileSyncFn as unknown as typeof import('node:child_process').execFileSync,
+    });
+
+    const progressEvents: TorProgressEvent[] = [];
+    controller.on('progress', (evt: TorProgressEvent) => progressEvents.push(evt));
+
+    const onion = await controller.start();
+    expect(onion).toBe(`http://${serviceId}.onion`);
+
+    if (process.platform !== 'win32') {
+      expect(torrcModeBeforeSpawn).toBe(0o600);
+    }
+    expect(torrcBeforeSpawn).toContain('UseBridges 1');
+    expect(torrcBeforeSpawn).toContain(
+      `ClientTransportPlugin meek_lite,obfs4,snowflake,webtunnel exec ${lyrebirdBin}`,
+    );
+    expect(torrcBeforeSpawn).not.toContain('-enableLogging');
+    expect(torrcBeforeSpawn).not.toContain('-unsafeLogging');
+    expect(torrcBeforeSpawn).toContain(`Bridge ${BUILTIN_SNOWFLAKE_BRIDGES[0]}`);
+    expect(commands.some((cmd) => cmd.startsWith('SETCONF'))).toBe(false);
+
+    expect(execFileSyncFn).toHaveBeenCalledWith('codesign', ['-v', torBin], { stdio: 'ignore' });
+    expect(execFileSyncFn).toHaveBeenCalledWith('codesign', ['-v', lyrebirdBin], { stdio: 'ignore' });
+
+    expect(progressEvents).toEqual([
+      {
+        phase: 'conn_pt',
+        progress: 5,
+        bridgeMode: 'snowflake',
+        tag: 'conn_pt',
+        summary: 'Connecting to pluggable transport',
+      },
+      {
+        phase: 'handshake_pt',
+        progress: 10,
+        bridgeMode: 'snowflake',
+        tag: 'handshake_pt',
+        summary: 'Handshaking with pluggable transport',
+      },
+      {
+        phase: 'bootstrap',
+        progress: 100,
+        bridgeMode: 'snowflake',
+        tag: 'done',
+        summary: 'Done',
+      },
+      {
+        phase: 'hs_desc',
+        progress: 100,
+        bridgeMode: 'snowflake',
+        hsDescAction: 'UPLOAD',
+      },
+      {
+        phase: 'hs_desc',
+        progress: 100,
+        bridgeMode: 'snowflake',
+        hsDescAction: 'UPLOADED',
+      },
+    ]);
+
+    expect(existsSync(join(dataDir, 'pt_state'))).toBe(true);
+    await controller.stop();
+    expect(existsSync(join(dataDir, 'torrc'))).toBe(false);
+    expect(existsSync(join(dataDir, 'pt_state'))).toBe(false);
+    expect(existsSync(dataDir)).toBe(false);
+  });
+
+  it('supports custom sanitized bridges in torrc without persisting outside dataDir and redacts bridge IPs on failure', async () => {
+    const root = makeTempDir();
+    const torDir = join(root, 'tor');
+    const ptDir = join(torDir, 'pluggable_transports');
+    mkdirSync(ptDir, { recursive: true });
+    const torBin = createExecutable(join(torDir, 'tor'));
+    createExecutable(join(ptDir, 'lyrebird'));
+    const dataDir = join(root, 'tmp-custom');
+
+    const secretBridgeIp = '198.51.100.88:443';
+    const customBridgeLine = `obfs4 ${secretBridgeIp} AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA cert=secretcert123== iat-mode=0`;
+
+    let capturedTorrc = '';
+    const spawnFn = vi.fn((_cmd: string, args: string[]) => {
+      const fIdx = args.indexOf('-f');
+      capturedTorrc = readFileSync(args[fIdx + 1], 'utf8');
+      const child = new EventEmitter() as EventEmitter & {
+        stderr: EventEmitter;
+        stdout: EventEmitter;
+        exitCode: number | null;
+        signalCode: NodeJS.Signals | null;
+        kill: () => boolean;
+      };
+      child.stderr = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.exitCode = null;
+      child.signalCode = null;
+      child.kill = () => true;
+
+      queueMicrotask(() => {
+        child.stderr.emit('data', Buffer.from(`Unable to connect to bridge ${secretBridgeIp}\n`));
+        child.exitCode = 1;
+        child.emit('exit', 1, null);
+      });
+      return child as unknown as ReturnType<typeof import('node:child_process').spawn>;
+    });
+
+    const controller = new TorController({
+      localPort: 3001,
+      dataDir,
+      torBinaryPath: torBin,
+      bridgeMode: 'custom',
+      customBridges: `Bridge ${customBridgeLine}`,
+      platform: 'linux',
+      startupTimeoutMs: 2000,
+      controlFilePollIntervalMs: 5,
+      spawnFn,
+    });
+
+    let caughtError!: Error;
+    try {
+      await controller.start();
+    } catch (err) {
+      caughtError = err as Error;
+    }
+
+    expect(caughtError).toBeInstanceOf(Error);
+    expect(caughtError.message).not.toContain('198.51.100.88');
+    expect(caughtError.message).toContain('[REDACTED_IP]');
+    expect(capturedTorrc).toContain(`Bridge ${customBridgeLine}`);
+    expect(existsSync(dataDir)).toBe(false);
+  });
+
+  it('defaults startup timeout to 180_000 ms when bridges are active and 120_000 ms in direct mode', async () => {
+    expect(DEFAULT_STARTUP_TIMEOUT_MS).toBe(120_000);
+    expect(DEFAULT_BRIDGE_STARTUP_TIMEOUT_MS).toBe(180_000);
+
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+    });
+    const root = makeTempDir();
+    const torDir = join(root, 'tor');
+    const ptDir = join(torDir, 'pluggable_transports');
+    mkdirSync(ptDir, { recursive: true });
+    const torBin = createExecutable(join(torDir, 'tor'));
+    createExecutable(join(ptDir, 'lyrebird'));
+    const dataDir = join(root, 'tmp-timeout');
+
+    let resolveSpawned!: () => void;
+    const spawnedPromise = new Promise<void>((resolve) => {
+      resolveSpawned = resolve;
+    });
+
+    const spawnFn = vi.fn(() => {
+      const child = new EventEmitter() as EventEmitter & {
+        stderr: EventEmitter;
+        stdout: EventEmitter;
+        exitCode: number | null;
+        signalCode: NodeJS.Signals | null;
+        kill: () => boolean;
+      };
+      child.stderr = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.exitCode = null;
+      child.signalCode = null;
+      child.kill = () => {
+        child.signalCode = 'SIGTERM';
+        child.emit('exit', null, 'SIGTERM');
+        return true;
+      };
+      resolveSpawned();
+      return child as unknown as ReturnType<typeof import('node:child_process').spawn>;
+    });
+
+    const directController = new TorController({
+      localPort: 3001,
+      dataDir,
+      torBinaryPath: torBin,
+      bridgeMode: 'direct',
+      platform: 'linux',
+    });
+    expect(directController.startupTimeoutMs).toBe(120_000);
+
+    const bridgeController = new TorController({
+      localPort: 3001,
+      dataDir,
+      torBinaryPath: torBin,
+      bridgeMode: 'snowflake',
+      platform: 'linux',
+      controlFilePollIntervalMs: 1000,
+      stopTimeoutMs: 50,
+      spawnFn,
+    });
+
+    expect(bridgeController.startupTimeoutMs).toBe(180_000);
+    let rejected = false;
+    const startPromise = bridgeController.start().catch(() => {
+      rejected = true;
+    });
+
+    await spawnedPromise;
+    await vi.advanceTimersByTimeAsync(125_000);
+    expect(rejected).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    for (let i = 0; i < 40 && !rejected; i++) {
+      await new Promise((r) => setImmediate(r));
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    await startPromise;
+    expect(rejected).toBe(true);
+  });
+
+  it('emits stall events when stuck <25% past stallTimeoutMs or on WARN BOOTSTRAP without leaking bridge IPs', async () => {
+    const root = makeTempDir();
+    const torDir = join(root, 'tor');
+    mkdirSync(torDir, { recursive: true });
+    const torBin = createExecutable(join(torDir, 'tor'));
+    const dataDir = join(root, 'tmp-stall');
+
+    const cookie = Buffer.alloc(32, 0x33);
+    const serverNonce = Buffer.alloc(32, 0x44);
+    const serviceId = 'vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd';
+    const [clientStream, serverStream] = createDuplexPair();
+
+    let buf = '';
+    serverStream.on('data', (chunk: Buffer) => {
+      buf += chunk.toString('utf8');
+      while (buf.includes('\r\n')) {
+        const idx = buf.indexOf('\r\n');
+        const line = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        if (line.startsWith('AUTHCHALLENGE SAFECOOKIE ')) {
+          const clientNonce = Buffer.from(line.slice('AUTHCHALLENGE SAFECOOKIE '.length).trim(), 'hex');
+          const serverHash = computeSafeCookieServerHash(cookie, clientNonce, serverNonce);
+          serverStream.write(
+            `250 AUTHCHALLENGE SERVERHASH=${serverHash.toString('hex')} SERVERNONCE=${serverNonce.toString('hex')}\r\n`,
+          );
+        } else if (line.startsWith('AUTHENTICATE ') || line.startsWith('SETEVENTS ') || line.startsWith('DEL_ONION ')) {
+          serverStream.write('250 OK\r\n');
+        } else if (line.startsWith('ADD_ONION ')) {
+          serverStream.write(`250-ServiceID=${serviceId}\r\n250 OK\r\n`);
+          serverStream.write(
+            '650 STATUS_CLIENT NOTICE BOOTSTRAP PROGRESS=10 TAG=conn_or SUMMARY="Connecting to relay"\r\n',
+          );
+        } else if (line === 'SIGNAL SHUTDOWN') {
+          serverStream.write('250 closing\r\n');
+        }
+      }
+    });
+
+    const spawnFn = createMockSpawnWithTorrcCapture(cookie, 49902);
+    const controller = new TorController({
+      localPort: 3001,
+      dataDir,
+      torBinaryPath: torBin,
+      bridgeMode: 'direct',
+      platform: 'linux',
+      startupTimeoutMs: 5000,
+      stallTimeoutMs: 60,
+      controlFilePollIntervalMs: 10,
+      stopTimeoutMs: 200,
+      spawnFn,
+      connectFn: () => clientStream,
+    });
+
+    const stalls: TorStallEvent[] = [];
+    controller.on('stall', (evt: TorStallEvent) => stalls.push(evt));
+
+    const startPromise = controller.start();
+
+    await vi.waitFor(() => {
+      expect(stalls.some((s) => s.reason === 'bootstrap_stalled')).toBe(true);
+    });
+    expect(stalls[0]).toMatchObject({
+      reason: 'bootstrap_stalled',
+      bridgeMode: 'direct',
+      progress: 10,
+      tag: 'conn_or',
+    });
+
+    serverStream.write(
+      '650 STATUS_CLIENT WARN BOOTSTRAP PROGRESS=10 TAG=conn_or SUMMARY="Problem connecting to 198.51.100.99:443" REASON=NOROUTE\r\n',
+    );
+    await vi.waitFor(() => {
+      expect(stalls.some((s) => s.reason === 'warn_bootstrap')).toBe(true);
+    });
+    const warnStall = stalls.find((s) => s.reason === 'warn_bootstrap')!;
+    expect(warnStall.bootstrapReason).toBe('NOROUTE');
+    expect(warnStall.summary).not.toContain('198.51.100.99');
+    expect(warnStall.summary).toContain('[REDACTED_IP]');
+
+    serverStream.write(
+      '650 STATUS_CLIENT NOTICE BOOTSTRAP PROGRESS=100 TAG=done SUMMARY="Done"\r\n',
+    );
+    serverStream.write(`650 HS_DESC UPLOADED ${serviceId} NO_AUTH $HSD1\r\n`);
+
+    await expect(startPromise).resolves.toBe(`http://${serviceId}.onion`);
+    expect(controller.getState().stalled).toBe(false);
+    await controller.stop();
   });
 });
