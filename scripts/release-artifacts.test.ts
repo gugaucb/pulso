@@ -534,5 +534,43 @@ describe('scripts/release-artifacts.mjs', () => {
 
       expect(deprecatedPins).toEqual([]);
     });
+
+    it('never passes empty signing secret env vars directly to tauri-action', () => {
+      const { parsed } = parseWorkflowYaml('.github/workflows/release-desktop.yml');
+      const jobs = (parsed.jobs ?? {}) as Record<
+        string,
+        {
+          steps?: Array<{
+            id?: string;
+            name?: string;
+            uses?: string;
+            env?: Record<string, unknown>;
+            run?: string;
+          }>;
+        }
+      >;
+      const buildSteps = jobs.build?.steps ?? [];
+      const tauriStep = buildSteps.find(
+        (step) => typeof step.uses === 'string' && step.uses.startsWith('tauri-apps/tauri-action'),
+      );
+      expect(tauriStep).toBeDefined();
+
+      const directSigningEnvKeys = [
+        'APPLE_CERTIFICATE',
+        'APPLE_CERTIFICATE_PASSWORD',
+        'APPLE_ID',
+        'APPLE_PASSWORD',
+        'APPLE_TEAM_ID',
+        'WINDOWS_CERTIFICATE',
+        'WINDOWS_CERTIFICATE_PASSWORD',
+      ];
+      for (const key of directSigningEnvKeys) {
+        expect(tauriStep?.env?.[key]).toBeUndefined();
+      }
+
+      const signConfigStep = buildSteps.find((step) => step.id === 'code_sign');
+      expect(signConfigStep).toBeDefined();
+      expect(signConfigStep?.run).toContain('GITHUB_ENV');
+    });
   });
 });

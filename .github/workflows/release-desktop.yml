@@ -141,40 +141,65 @@ jobs:
           node scripts/build-sidecar.mjs --target ${{ matrix.platform.rust_triple }}
           node scripts/package-desktop.mjs --flavor ${{ matrix.flavor }} --target ${{ matrix.platform.rust_triple }} --version ${{ steps.prep.outputs.version }}
 
-      - name: Configure optional Apple signing identity (fallback to ad-hoc '-')
-        id: apple_sign
-        if: runner.os == 'macOS'
+      - name: Configure optional code signing environment (ad-hoc '-' fallback)
+        id: code_sign
         shell: bash
         env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          RAW_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          RAW_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          RAW_APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          RAW_APPLE_ID: ${{ secrets.APPLE_ID }}
+          RAW_APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          RAW_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          RAW_WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          RAW_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          if [ -n "${APPLE_CERTIFICATE}" ] && [ -n "${APPLE_CERTIFICATE_PASSWORD}" ]; then
-            echo "signing_identity=${APPLE_SIGNING_IDENTITY}" >> "${GITHUB_OUTPUT}"
+          write_github_env() {
+            local name="$1"
+            local value="$2"
+            local delim="PULSO_ENV_EOF_${RANDOM}_$$"
+            {
+              echo "${name}<<${delim}"
+              printf '%s\n' "${value}"
+              echo "${delim}"
+            } >> "${GITHUB_ENV}"
+          }
+
+          if [ "${RUNNER_OS}" = "macOS" ]; then
+            if [ -n "${RAW_APPLE_CERTIFICATE}" ] && [ -n "${RAW_APPLE_CERTIFICATE_PASSWORD}" ]; then
+              write_github_env "APPLE_CERTIFICATE" "${RAW_APPLE_CERTIFICATE}"
+              write_github_env "APPLE_CERTIFICATE_PASSWORD" "${RAW_APPLE_CERTIFICATE_PASSWORD}"
+              if [ -n "${RAW_APPLE_SIGNING_IDENTITY}" ]; then
+                write_github_env "APPLE_SIGNING_IDENTITY" "${RAW_APPLE_SIGNING_IDENTITY}"
+              fi
+              if [ -n "${RAW_APPLE_ID}" ] && [ -n "${RAW_APPLE_PASSWORD}" ] && [ -n "${RAW_APPLE_TEAM_ID}" ]; then
+                write_github_env "APPLE_ID" "${RAW_APPLE_ID}"
+                write_github_env "APPLE_PASSWORD" "${RAW_APPLE_PASSWORD}"
+                write_github_env "APPLE_TEAM_ID" "${RAW_APPLE_TEAM_ID}"
+              fi
+              echo "ad_hoc=false" >> "${GITHUB_OUTPUT}"
+            else
+              echo "APPLE_SIGNING_IDENTITY=-" >> "${GITHUB_ENV}"
+              echo "ad_hoc=true" >> "${GITHUB_OUTPUT}"
+            fi
+          elif [ "${RUNNER_OS}" = "Windows" ]; then
+            if [ -n "${RAW_WINDOWS_CERTIFICATE}" ] && [ -n "${RAW_WINDOWS_CERTIFICATE_PASSWORD}" ]; then
+              write_github_env "WINDOWS_CERTIFICATE" "${RAW_WINDOWS_CERTIFICATE}"
+              write_github_env "WINDOWS_CERTIFICATE_PASSWORD" "${RAW_WINDOWS_CERTIFICATE_PASSWORD}"
+            fi
             echo "ad_hoc=false" >> "${GITHUB_OUTPUT}"
           else
-            echo "signing_identity=-" >> "${GITHUB_OUTPUT}"
-            echo "ad_hoc=true" >> "${GITHUB_OUTPUT}"
+            echo "ad_hoc=false" >> "${GITHUB_OUTPUT}"
           fi
 
       - name: Build Tauri bundles
         uses: tauri-apps/tauri-action@v1
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ steps.apple_sign.outputs.signing_identity }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
           projectPath: .
           args: --config src-tauri/tauri.${{ matrix.flavor }}.conf.json --target ${{ matrix.platform.rust_triple }} --features flavor-${{ matrix.flavor }} --bundles ${{ matrix.platform.bundles }}
 
       - name: Verify macOS ad-hoc signatures when official Apple certificate is absent
-        if: runner.os == 'macOS' && steps.apple_sign.outputs.ad_hoc == 'true'
+        if: runner.os == 'macOS' && steps.code_sign.outputs.ad_hoc == 'true'
         shell: bash
         run: |
           APP_PATH="$(find "src-tauri/target/${{ matrix.platform.rust_triple }}/release/bundle/macos" -maxdepth 1 -name '*.app' | head -n 1)"
