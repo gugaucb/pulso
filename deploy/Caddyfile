@@ -1,0 +1,16 @@
+{$PULSO_DOMAIN} {
+    # Zero-log: descarta access logs para evitar persistência de IPs de Participantes
+    log {
+        output discard
+    }
+
+    header {
+        Referrer-Policy "no-referrer"
+        X-Content-Type-Options "nosniff"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+
+    # Suporte nativo a HTTP e upgrade WebSocket (wss://) para /ws
+    reverse_proxy pulso:3001
+}
