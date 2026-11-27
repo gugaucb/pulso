@@ -8,3 +8,4 @@ test-results/
 *.local
 tor_data/
 .tor-bin/
+.cloudflared-bin/
