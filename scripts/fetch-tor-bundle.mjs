@@ -12,6 +12,24 @@ export const DEFAULT_TOR_BROWSER_VERSION =
   process.env.PULSO_TOR_BUNDLE_VERSION?.trim() || '16.0';
 export const BASE_DOWNLOAD_URL = 'https://archive.torproject.org/tor-package-archive/torbrowser';
 export const TOR_BROWSER_SIGNING_KEY_FINGERPRINT = 'EF6E286DDA85EA2A4BA7DE684E2C6E8793298290';
+const TOR_BROWSER_WKD_URL =
+  'https://openpgpkey.torproject.org/.well-known/openpgpkey/torproject.org/hu/kounek7zrdx745qydx6p59t9mqjpuhdf?l=torbrowser';
+
+export function formatGpgPath(filePath, platform = process.platform) {
+  const value = String(filePath ?? '');
+  return platform === 'win32' ? value.replace(/\\/g, '/') : value;
+}
+
+export function buildTorSigningKeyUrls(expectedFingerprint = TOR_BROWSER_SIGNING_KEY_FINGERPRINT) {
+  const fpr = String(expectedFingerprint).toUpperCase();
+  const urls = [];
+  if (fpr === TOR_BROWSER_SIGNING_KEY_FINGERPRINT) {
+    urls.push(TOR_BROWSER_WKD_URL);
+  }
+  urls.push(`https://keys.openpgp.org/vks/v1/by-fingerprint/${fpr}`);
+  urls.push(`https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${fpr}`);
+  return urls;
+}
 
 export function resolveTargetTriple(platform = process.platform, arch = process.arch) {
   if (platform === 'darwin' && arch === 'arm64') return 'macos-aarch64';
@@ -182,6 +200,7 @@ export async function verifyChecksumsPgpSignature({
   expectedFingerprint = TOR_BROWSER_SIGNING_KEY_FINGERPRINT,
   requirePgp = false,
   keyringPath = null,
+  platform = process.platform,
   execFileSyncFn = execFileSync,
   downloadToBufferFn = downloadToBuffer,
   warnFn = console.warn,
@@ -200,9 +219,15 @@ export async function verifyChecksumsPgpSignature({
     return { verified: false, skipped: true, reason: 'gpg_unavailable' };
   }
 
+  const formattedKeyringPath = keyringPath ? formatGpgPath(keyringPath, platform) : null;
+  const formattedAscPath = formatGpgPath(ascPath, platform);
+  const formattedChecksumsPath = formatGpgPath(checksumsPath, platform);
+
   let tempGpgHome = null;
   try {
-    let baseArgs = keyringPath ? ['--no-default-keyring', '--keyring', keyringPath] : [];
+    let baseArgs = formattedKeyringPath
+      ? ['--no-default-keyring', '--keyring', formattedKeyringPath]
+      : [];
     let keyAvailable = false;
 
     try {
@@ -212,34 +237,87 @@ export async function verifyChecksumsPgpSignature({
       keyAvailable = false;
     }
 
-    if (!keyAvailable && !keyringPath) {
+    const diagnostics = [];
+
+    const tryImportKeyBytes = (gpgArgs, keyBytes) => {
+      execFileSyncFn('gpg', [...gpgArgs, '--batch', '--no-tty', '--import'], {
+        input: keyBytes,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      execFileSyncFn('gpg', [...gpgArgs, '--list-keys', expectedFingerprint], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    };
+
+    if (!keyAvailable && !formattedKeyringPath) {
       tempGpgHome = mkdtempSync(path.join(os.tmpdir(), 'pulso-gpg-'), { mode: 0o700 });
-      baseArgs = ['--homedir', tempGpgHome];
-      try {
-        const keyUrl = `https://keys.openpgp.org/vks/v1/by-fingerprint/${expectedFingerprint}`;
-        const keyBytes = await downloadToBufferFn(keyUrl);
-        const keyFile = path.join(tempGpgHome, 'tor-browser-dev.asc');
-        await writeFile(keyFile, keyBytes, { mode: 0o600 });
-        execFileSyncFn('gpg', [...baseArgs, '--batch', '--import', keyFile], { stdio: 'ignore' });
-        keyAvailable = true;
-      } catch {
+      const formattedTempHome = formatGpgPath(tempGpgHome, platform);
+      const isolatedArgs = ['--homedir', formattedTempHome];
+
+      for (const keyUrl of buildTorSigningKeyUrls(expectedFingerprint)) {
+        let keyBytes;
         try {
-          execFileSyncFn(
-            'gpg',
-            [...baseArgs, '--batch', '--keyserver', 'hkps://keys.openpgp.org', '--recv-keys', expectedFingerprint],
-            { stdio: 'ignore' },
-          );
+          keyBytes = await downloadToBufferFn(keyUrl);
+        } catch (err) {
+          diagnostics.push(`${keyUrl}: ${err instanceof Error ? err.message : String(err)}`);
+          continue;
+        }
+
+        try {
+          tryImportKeyBytes(isolatedArgs, keyBytes);
+          baseArgs = isolatedArgs;
           keyAvailable = true;
-        } catch {
-          keyAvailable = false;
+          break;
+        } catch (isolatedErr) {
+          const isolatedDetail =
+            extractCommandOutput(isolatedErr).trim() ||
+            (isolatedErr instanceof Error ? isolatedErr.message : String(isolatedErr));
+          try {
+            tryImportKeyBytes([], keyBytes);
+            baseArgs = [];
+            keyAvailable = true;
+            break;
+          } catch (defaultErr) {
+            const defaultDetail =
+              extractCommandOutput(defaultErr).trim() ||
+              (defaultErr instanceof Error ? defaultErr.message : String(defaultErr));
+            diagnostics.push(`${keyUrl} import failed (${isolatedDetail}; default keyring: ${defaultDetail})`);
+          }
+        }
+      }
+
+      if (!keyAvailable) {
+        for (const [label, recvArgs] of [
+          ['isolated ubuntu keyserver', [...isolatedArgs, '--batch', '--no-tty', '--keyserver', 'hkps://keyserver.ubuntu.com', '--recv-keys', expectedFingerprint]],
+          ['default ubuntu keyserver', ['--batch', '--no-tty', '--keyserver', 'hkps://keyserver.ubuntu.com', '--recv-keys', expectedFingerprint]],
+        ]) {
+          try {
+            execFileSyncFn('gpg', recvArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+            const checkArgs = label.startsWith('isolated') ? isolatedArgs : [];
+            execFileSyncFn('gpg', [...checkArgs, '--list-keys', expectedFingerprint], {
+              encoding: 'utf8',
+              stdio: ['ignore', 'pipe', 'pipe'],
+            });
+            baseArgs = checkArgs;
+            keyAvailable = true;
+            break;
+          } catch (recvErr) {
+            const detail =
+              extractCommandOutput(recvErr).trim() ||
+              (recvErr instanceof Error ? recvErr.message : String(recvErr));
+            diagnostics.push(`${label}: ${detail}`);
+          }
         }
       }
     }
 
     if (!keyAvailable) {
+      const detailSuffix = diagnostics.length > 0 ? ` [${diagnostics.slice(-2).join(' | ')}]` : '';
       const msg = `Tor Browser Developers PGP key (${expectedFingerprint}) is not available locally`;
       if (requirePgp) {
-        throw new Error(`${msg}; import it or provide --gpg-keyring`);
+        throw new Error(`${msg}; import it or provide --gpg-keyring${detailSuffix}`);
       }
       warnFn(`Warning: ${msg}; skipping PGP verification (pass --require-pgp to enforce).`);
       return { verified: false, skipped: true, reason: 'key_unavailable' };
@@ -249,7 +327,15 @@ export async function verifyChecksumsPgpSignature({
     try {
       const result = execFileSyncFn(
         'gpg',
-        [...baseArgs, '--batch', '--status-fd', '1', '--verify', ascPath, checksumsPath],
+        [
+          ...baseArgs,
+          '--batch',
+          '--status-fd',
+          '1',
+          '--verify',
+          formattedAscPath,
+          formattedChecksumsPath,
+        ],
         { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
       );
       statusOutput = typeof result === 'string' ? result : String(result || '');

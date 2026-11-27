@@ -7,6 +7,8 @@ import {
   DEFAULT_TOR_BROWSER_VERSION,
   TOR_BROWSER_SIGNING_KEY_FINGERPRINT,
   buildBundleUrls,
+  buildTorSigningKeyUrls,
+  formatGpgPath,
   parseArgs,
   parseGpgValidSig,
   parseSha256FromChecksums,
@@ -214,5 +216,113 @@ describe('scripts/fetch-tor-bundle.mjs helpers', () => {
       ['-s', '-', '--force', conjure],
       expect.anything(),
     );
+  });
+
+  it('normalizes Windows backslashes for gpg and falls back across WKD, keys.openpgp.org, and keyserver.ubuntu.com', async () => {
+    expect(formatGpgPath('C:\\Users\\runner\\AppData\\Local\\Temp\\pulso-gpg-1\\sig.asc', 'win32')).toBe(
+      'C:/Users/runner/AppData/Local/Temp/pulso-gpg-1/sig.asc',
+    );
+    expect(formatGpgPath('/tmp/pulso-gpg-1/sig.asc', 'linux')).toBe('/tmp/pulso-gpg-1/sig.asc');
+
+    const keyUrls = buildTorSigningKeyUrls(TOR_BROWSER_SIGNING_KEY_FINGERPRINT);
+    expect(keyUrls[0]).toContain('openpgpkey.torproject.org');
+    expect(keyUrls.some((url) => url.includes('keys.openpgp.org'))).toBe(true);
+    expect(keyUrls.some((url) => url.includes('keyserver.ubuntu.com'))).toBe(true);
+
+    const dir = makeTempDir();
+    const checksumsPath = join(dir, 'sha256sums-signed-build.txt');
+    const ascPath = join(dir, 'sha256sums-signed-build.txt.asc');
+    writeFileSync(checksumsPath, 'checksums', 'utf8');
+    writeFileSync(ascPath, 'sig', 'utf8');
+
+    const downloadedUrls: string[] = [];
+    const downloadMock = vi.fn(async (url: string) => {
+      downloadedUrls.push(url);
+      if (url.includes('openpgpkey.torproject.org')) {
+        throw new Error('HTTP 503 Service Unavailable');
+      }
+      if (url.includes('keys.openpgp.org')) {
+        return Buffer.from('-----BEGIN PGP PUBLIC KEY BLOCK-----\nstripped-uid\n-----END PGP PUBLIC KEY BLOCK-----');
+      }
+      return Buffer.from('-----BEGIN PGP PUBLIC KEY BLOCK-----\nfull-key\n-----END PGP PUBLIC KEY BLOCK-----');
+    });
+
+    const gpgCalls: Array<{ args: string[]; input?: unknown }> = [];
+    let defaultKeyImported = false;
+    const winExecMock = vi.fn((_cmd: string, args: string[], opts?: { input?: unknown }) => {
+      gpgCalls.push({ args, input: opts?.input });
+      if (args.includes('--version')) return 'gpg (GnuPG) 2.4.5';
+      if (args.includes('--list-keys')) {
+        if (!args.includes('--homedir') && defaultKeyImported) {
+          return 'pub   rsa4096';
+        }
+        throw new Error('public key not found');
+      }
+      if (args.includes('--import')) {
+        const keyText = Buffer.isBuffer(opts?.input) ? opts.input.toString('utf8') : String(opts?.input ?? '');
+        // Simulate keys.openpgp.org stripped-UID rejection AND MSYS2 --homedir failure
+        if (keyText.includes('stripped-uid') || args.includes('--homedir')) {
+          const err = new Error('gpg: no valid OpenPGP data found / homedir failed') as Error & { stderr?: string };
+          err.stderr = keyText.includes('stripped-uid') ? 'gpg: no user ID' : 'gpg: homedir socket error';
+          throw err;
+        }
+        defaultKeyImported = true;
+        return '';
+      }
+      if (args.includes('--verify')) {
+        expect(defaultKeyImported).toBe(true);
+        // On win32, no backslashes should remain in any gpg path argument
+        for (const a of args) {
+          expect(a).not.toContain('\\');
+        }
+        return `[GNUPG:] VALIDSIG ${TOR_BROWSER_SIGNING_KEY_FINGERPRINT} 2026-01-01 1767225600 0 4 0 1 10 00 ${TOR_BROWSER_SIGNING_KEY_FINGERPRINT}\n`;
+      }
+      return '';
+    });
+
+    const result = await verifyChecksumsPgpSignature({
+      checksumsPath: 'C:\\work\\sha256sums-signed-build.txt',
+      ascPath: 'C:\\work\\sha256sums-signed-build.txt.asc',
+      requirePgp: true,
+      platform: 'win32',
+      execFileSyncFn: winExecMock as unknown as typeof import('node:child_process').execFileSync,
+      downloadToBufferFn: downloadMock,
+      warnFn: () => {},
+    });
+
+    expect(result.verified).toBe(true);
+    expect(downloadedUrls.some((u) => u.includes('openpgpkey.torproject.org'))).toBe(true);
+    expect(downloadedUrls.some((u) => u.includes('keys.openpgp.org'))).toBe(true);
+    expect(downloadedUrls.some((u) => u.includes('keyserver.ubuntu.com'))).toBe(true);
+    expect(gpgCalls.some((c) => c.args.includes('--import') && Buffer.isBuffer(c.input))).toBe(true);
+  });
+
+  it('includes captured GPG/network diagnostic reasons when all key import fallbacks fail under --require-pgp', async () => {
+    const dir = makeTempDir();
+    const checksumsPath = join(dir, 'sha256sums-signed-build.txt');
+    const ascPath = join(dir, 'sha256sums-signed-build.txt.asc');
+    writeFileSync(checksumsPath, 'checksums', 'utf8');
+    writeFileSync(ascPath, 'sig', 'utf8');
+
+    const failDownload = vi.fn(async () => {
+      throw new Error('HTTP 429 Too Many Requests');
+    });
+    const failExec = vi.fn((_cmd: string, args: string[]) => {
+      if (args.includes('--version')) return 'gpg 2.4';
+      const err = new Error('gpg failed') as Error & { stderr?: string };
+      err.stderr = 'gpg: keyserver receive failed: No name';
+      throw err;
+    });
+
+    await expect(
+      verifyChecksumsPgpSignature({
+        checksumsPath,
+        ascPath,
+        requirePgp: true,
+        execFileSyncFn: failExec as unknown as typeof import('node:child_process').execFileSync,
+        downloadToBufferFn: failDownload,
+        warnFn: () => {},
+      }),
+    ).rejects.toThrow(/HTTP 429 Too Many Requests|keyserver receive failed/i);
   });
 });
