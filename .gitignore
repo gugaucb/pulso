@@ -6,6 +6,8 @@ test-results/
 .worktrees/
 .DS_Store
 *.local
+.env
+deploy/.env
 tor_data/
 .tor-bin/
 .cloudflared-bin/
