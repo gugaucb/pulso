@@ -454,5 +454,36 @@ describe('scripts/release-artifacts.mjs', () => {
       expect(raw).toContain('--create-dmg');
       expect(raw.indexOf('--verify-app')).toBeLessThan(raw.indexOf('--create-dmg'));
     });
+
+    it('never references secrets.* inside job or step if expressions across all GitHub workflows', () => {
+      const workflowFiles = [
+        '.github/workflows/release-server.yml',
+        '.github/workflows/release-desktop.yml',
+      ];
+      const violations: string[] = [];
+
+      for (const workflowFile of workflowFiles) {
+        const { parsed } = parseWorkflowYaml(workflowFile);
+        const jobs = (parsed.jobs ?? {}) as Record<
+          string,
+          { if?: unknown; steps?: Array<{ name?: string; if?: unknown }> }
+        >;
+
+        for (const [jobId, job] of Object.entries(jobs)) {
+          if (typeof job.if === 'string' && /\bsecrets\./.test(job.if)) {
+            violations.push(`${workflowFile} job '${jobId}' if: ${job.if}`);
+          }
+          for (const [idx, step] of (job.steps ?? []).entries()) {
+            if (typeof step.if === 'string' && /\bsecrets\./.test(step.if)) {
+              violations.push(
+                `${workflowFile} job '${jobId}' step[${idx}] (${step.name ?? 'unnamed'}) if: ${step.if}`,
+              );
+            }
+          }
+        }
+      }
+
+      expect(violations).toEqual([]);
+    });
   });
 });
