@@ -15,7 +15,11 @@ import {
   parseControlPortFile,
   type ControlAsyncEvent,
 } from './controlProtocol';
-import { TorController, resolveTorBinary } from './torController';
+import {
+  TorController,
+  ensureDarwinBinarySigned,
+  resolveTorBinary,
+} from './torController';
 
 function createExecutable(filePath: string): string {
   writeFileSync(filePath, '#!/bin/sh\nexit 0\n', 'utf8');
@@ -161,15 +165,15 @@ describe('controlProtocol helpers', () => {
     const serverNonce = Buffer.alloc(32, 0x22);
 
     expect(computeSafeCookieServerHash(cookie, clientNonce, serverNonce).toString('hex')).toBe(
-      '98ca64872a16c283e1922e4a2610b91baa71b8ac630e5f18337e225b8751bbf0',
+      '957c6cb07d468a0bdbe5ca15118a95c3d162e6a828dbb70114cf03cceeecec4b',
     );
     expect(computeSafeCookieClientHash(cookie, clientNonce, serverNonce).toString('hex')).toBe(
-      '8b3bb5b7c72eeda289de53de757f94f8018581e4dc3a819c718962bf2ff729ee',
+      '4c1e757bd79276b6a940b8829227335c4f0564d3fe69e04ef4cca9d305841f9a',
     );
   });
 
   it('parses AUTHCHALLENGE, ADD_ONION ServiceID, and STATUS_CLIENT / HS_DESC events', () => {
-    const serverHashHex = '98ca64872a16c283e1922e4a2610b91baa71b8ac630e5f18337e225b8751bbf0';
+    const serverHashHex = '957c6cb07d468a0bdbe5ca15118a95c3d162e6a828dbb70114cf03cceeecec4b';
     const serverNonceHex = '22'.repeat(32);
     const parsedChallenge = parseAuthChallengeReply([
       `AUTHCHALLENGE SERVERHASH=${serverHashHex} SERVERNONCE=${serverNonceHex}`,
@@ -596,6 +600,51 @@ describe('TorController lifecycle (Duplex + real temp tor_data + dummy tor execu
     await expect(controller2.start()).rejects.toThrow(/exited prematurely/i);
     expect(controller2.status).toBe('error');
     expect(existsSync(dataDir)).toBe(false);
+
+    // Test actionable diagnostic when killed with SIGKILL on darwin
+    const sigkillBin = join(root, 'sigkill-tor');
+    writeFileSync(sigkillBin, '#!/bin/sh\nkill -9 $$\n', 'utf8');
+    chmodSync(sigkillBin, 0o755);
+
+    const controller3 = new TorController({
+      localPort: 3001,
+      dataDir,
+      torBinaryPath: sigkillBin,
+      platform: 'darwin',
+      startupTimeoutMs: 3000,
+      controlFilePollIntervalMs: 10,
+      stopTimeoutMs: 300,
+      execFileSyncFn: vi.fn(),
+    });
+
+    await expect(controller3.start()).rejects.toThrow(/macOS killed Tor with SIGKILL/i);
+  });
+});
+
+describe('ensureDarwinBinarySigned', () => {
+  it('does nothing on non-darwin platforms', () => {
+    const mockExec = vi.fn();
+    ensureDarwinBinarySigned('/dummy/tor', 'linux', mockExec as any);
+    expect(mockExec).not.toHaveBeenCalled();
+  });
+
+  it('verifies signature on darwin and skips ad-hoc signing if already valid', () => {
+    const mockExec = vi.fn();
+    ensureDarwinBinarySigned('/dummy/tor', 'darwin', mockExec as any);
+    expect(mockExec).toHaveBeenCalledTimes(1);
+    expect(mockExec).toHaveBeenCalledWith('codesign', ['-v', '/dummy/tor'], { stdio: 'ignore' });
+  });
+
+  it('attempts ad-hoc signing when verification throws on darwin', () => {
+    const mockExec = vi.fn().mockImplementation((cmd, args) => {
+      if (args[0] === '-v') {
+        throw new Error('code object is not signed at all');
+      }
+    });
+    ensureDarwinBinarySigned('/dummy/tor', 'darwin', mockExec as any);
+    expect(mockExec).toHaveBeenCalledWith('codesign', ['-s', '-', '--force', '/dummy/tor'], {
+      stdio: 'ignore',
+    });
   });
 });
 

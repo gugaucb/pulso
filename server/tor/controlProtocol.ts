@@ -65,8 +65,8 @@ function computeSafeCookieHmac(
   clientNonce: Buffer,
   serverNonce: Buffer,
 ): Buffer {
-  const payload = Buffer.concat([label, clientNonce, serverNonce]);
-  return createHmac('sha256', cookieBytes).update(payload).digest();
+  const payload = Buffer.concat([cookieBytes, clientNonce, serverNonce]);
+  return createHmac('sha256', label).update(payload).digest();
 }
 
 /**

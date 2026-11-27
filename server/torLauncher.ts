@@ -1,10 +1,10 @@
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { RuntimeInfo } from '../shared/protocol';
-import { createServer } from './app';
+import { createServer, resolveDefaultStaticDir } from './app';
 import type { Clock } from './clock';
 import { resolvePort } from './config';
 import {
@@ -68,9 +68,14 @@ export async function startTorServer(options: StartTorServerOptions = {}): Promi
   const getRuntimeInfo = (): RuntimeInfo => ({ ...runtimeInfo });
   let stopFn: (() => Promise<void>) | undefined;
 
+  const resolvedStaticDir = options.staticDir ?? resolveDefaultStaticDir();
+  if (!existsSync(path.resolve(resolvedStaticDir, 'index.html'))) {
+    log('Warning: Frontend build not found in dist/. Run `npm run build` so participants can load the web interface.');
+  }
+
   const app = await createServer({
     clock: options.clock,
-    staticDir: options.staticDir,
+    staticDir: resolvedStaticDir,
     getRuntimeInfo,
     onAllRoomsClosed:
       options.autoStopOnRoomClose === false

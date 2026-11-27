@@ -1,7 +1,8 @@
-import { ShieldOff } from 'lucide-react';
+import type { CSSProperties } from 'react';
+import { ArrowLeft, Eraser } from 'lucide-react';
 import type { RoomExpiryReason } from '../../domain/types';
 import { useI18n } from '../../i18n';
-import { useTheme } from '../../theme/ThemeContext';
+import { PulseLine } from '../PulseLine';
 import { PulsoLogo } from '../PulsoLogo';
 
 interface ExpiredRoomScreenProps {
@@ -9,10 +10,12 @@ interface ExpiredRoomScreenProps {
   onReturnToEntry: () => void;
 }
 
+/** Content follows the flatline: it lands as the trace goes flat (~640ms). */
+const beat = (delayMs: number, durMs = 520): CSSProperties =>
+  ({ '--delay': `${delayMs}ms`, '--dur': `${durMs}ms` }) as CSSProperties;
+
 export function ExpiredRoomScreen({ reason, onReturnToEntry }: ExpiredRoomScreenProps) {
   const { t } = useI18n();
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
 
   const bodyText =
     reason === 'hard_ttl'
@@ -24,51 +27,51 @@ export function ExpiredRoomScreen({ reason, onReturnToEntry }: ExpiredRoomScreen
           : t.room.expiredBody;
 
   return (
-    <main className="min-h-screen bg-[#F8F9FC] dark:bg-[#1A1C2A] flex flex-col items-center justify-center p-4 transition-colors">
-      <section
-        aria-labelledby="expired-room-title"
-        className="w-full max-w-md rounded-2xl bg-white dark:bg-[#232638] border border-slate-200/80 dark:border-[#2E3248] shadow-lg p-8 text-center space-y-5 transition-colors"
-      >
-        <div className="flex justify-center">
-          <PulsoLogo variant={isDark ? 'dark' : 'light'} size="sm" />
-        </div>
+    <main className="relative isolate flex min-h-dvh flex-col overflow-hidden bg-canvas text-ink">
+      <div className="pulso-atmosphere -z-10" data-tone="quiet" aria-hidden="true" />
 
-        <div className="flex justify-center">
-          <span
-            aria-hidden="true"
-            className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 dark:bg-red-500/15 text-[#EF4444] dark:text-red-400 border border-red-200/80 dark:border-red-500/30"
-          >
-            <ShieldOff className="h-6 w-6" />
-          </span>
-        </div>
+      <header className="mx-auto w-full max-w-6xl px-5 py-5 sm:px-8 sm:py-7">
+        <PulsoLogo variant="auto" size="sm" />
+      </header>
 
-        <div className="space-y-2">
+      <div className="flex flex-1 items-center justify-center px-5 pb-16 sm:px-8">
+        <section aria-labelledby="expired-room-title" className="w-full max-w-lg text-center">
+          <PulseLine
+            variant="flatline"
+            className="mx-auto h-12 w-full max-w-xs text-ink-3/60 sm:h-14"
+          />
+
           <h1
             id="expired-room-title"
-            className="text-xl font-bold text-[#111827] dark:text-slate-50 tracking-tight"
+            className="type-title enter-materialize mt-10 text-ink"
+            style={beat(520, 600)}
           >
             {t.room.expiredTitle}
           </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+          <p className="type-lead enter-materialize mx-auto mt-4 max-w-md text-ink-2" style={beat(600)}>
             {bodyText}
           </p>
-        </div>
 
-        <p
-          role="status"
-          className="rounded-xl bg-slate-50 dark:bg-[#141522] border border-slate-200/80 dark:border-[#2E3248] px-4 py-3 text-xs text-slate-600 dark:text-slate-300 leading-relaxed"
-        >
-          {t.inactivity.expiredPurgeNotice}
-        </p>
+          <p
+            role="status"
+            className="enter-materialize mx-auto mt-8 flex max-w-md items-start justify-center gap-2.5 border-y border-line py-4 text-left text-xs leading-relaxed text-ink-3"
+            style={beat(660)}
+          >
+            <Eraser className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>{t.inactivity.expiredPurgeNotice}</span>
+          </p>
 
-        <button
-          type="button"
-          onClick={onReturnToEntry}
-          className="w-full inline-flex items-center justify-center rounded-xl bg-[#5B3DF5] hover:bg-[#4E32D9] active:bg-[#4328C4] px-4 py-3 text-sm font-semibold text-white shadow-sm transition cursor-pointer"
-        >
-          {t.room.expiredAction}
-        </button>
-      </section>
+          <button
+            type="button"
+            onClick={onReturnToEntry}
+            className="enter-materialize mt-8 inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-semibold text-canvas shadow-[0_8px_24px_-12px_rgb(16_17_38/0.5)] hover:opacity-90 cursor-pointer"
+            style={beat(720)}
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            <span>{t.room.expiredAction}</span>
+          </button>
+        </section>
+      </div>
     </main>
   );
 }

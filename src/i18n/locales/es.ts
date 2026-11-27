@@ -41,6 +41,9 @@ export const es: TranslationDictionary = {
     torStatusBootstrapping: 'Inicializando la red Tor y publicando el servicio .onion…',
     torStatusReady: 'Servicio .onion listo para crear la Sala.',
     torStatusError: 'No se pudo iniciar el daemon Tor. Verifica el binario tor (o PULSO_TOR_BIN) y reinicia el lanzador local.',
+    guaranteeEncrypted: 'Cifrado de extremo a extremo, en tu navegador',
+    guaranteeNoSignup: 'Sin registro, sin historial',
+    guaranteeEphemeral: 'Desaparece tras 60 min de silencio',
   },
   errors: {
     invalid_code: 'Código de sala inválido. Verifica los 8 caracteres (ej.: A7K9-M2P4).',

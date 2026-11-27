@@ -41,6 +41,9 @@ export const zhCN: TranslationDictionary = {
     torStatusBootstrapping: '正在连接 Tor 网络并发布 .onion 服务…',
     torStatusReady: '.onion 服务已就绪，可以创建房间。',
     torStatusError: 'Tor 守护进程启动失败。请检查 tor 可执行文件（或 PULSO_TOR_BIN）并重启本地启动器。',
+    guaranteeEncrypted: '端到端加密，仅在你的浏览器中完成',
+    guaranteeNoSignup: '无需注册，不留记录',
+    guaranteeEphemeral: '静默 60 分钟后自动消失',
   },
   errors: {
     invalid_code: '房间代码无效，请检查 8 位字符（例如：A7K9-M2P4）。',

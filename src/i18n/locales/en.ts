@@ -41,6 +41,9 @@ export const en: TranslationDictionary = {
     torStatusBootstrapping: 'Bootstrapping Tor network and publishing .onion service…',
     torStatusReady: '.onion service ready to create the room.',
     torStatusError: 'Failed to start the Tor daemon. Check your tor binary (or PULSO_TOR_BIN) and restart the local launcher.',
+    guaranteeEncrypted: 'End-to-end encrypted, in your browser',
+    guaranteeNoSignup: 'No sign-up, no history',
+    guaranteeEphemeral: 'Vanishes after 60 min of silence',
   },
   errors: {
     invalid_code: 'Invalid room code. Check the 8 characters (e.g. A7K9-M2P4).',

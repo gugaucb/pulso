@@ -36,8 +36,11 @@ node scripts/fetch-tor-bundle.mjs
 node scripts/fetch-tor-bundle.mjs --verify ./tor-expert-bundle.tar.gz --sha256 <digest-sha256>
 ```
 
+> [!NOTE]
+> No macOS (especialmente em máquinas com Apple Silicon arm64), o kernel exige que executáveis Mach-O possuam assinatura de código válida; binários sem assinatura sofrem terminação imediata com `SIGKILL` (código 137). O script `fetch-tor-bundle.mjs` e o `TorController` realizam a assinatura ad-hoc (`codesign -s - --force`) automaticamente caso necessário.
+
 Como alternativa, instale o pacote `tor` do sistema operacional ou aponte `PULSO_TOR_BIN` diretamente para o binário desejado:
 
 ```bash
-PULSO_TOR_BIN=/caminho/para/tor npm run start
+PULSO_TOR_BIN=//Users/gustavoluiscosta/Downloads/projetos/pulse/.tor-bin/tor/tor npm run start
 ```

@@ -1,15 +1,20 @@
 import { useId } from 'react';
 
 interface PulsoLogoProps {
-  variant?: 'light' | 'dark';
+  /**
+   * Background the logo sits on. `auto` follows the active theme tokens;
+   * `dark` forces light text for always-dark surfaces (room sidebar).
+   */
+  variant?: 'auto' | 'light' | 'dark';
   size?: 'sm' | 'md';
 }
 
-export function PulsoLogo({ variant = 'light', size = 'md' }: PulsoLogoProps) {
+export function PulsoLogo({ variant = 'auto', size = 'md' }: PulsoLogoProps) {
   const gradientId = useId();
   const iconSize = size === 'sm' ? 'h-7 w-7' : 'h-8 w-8';
   const textSize = size === 'sm' ? 'text-lg' : 'text-xl';
-  const textColor = variant === 'dark' ? 'text-white' : 'text-[#111827]';
+  const textColor =
+    variant === 'dark' ? 'text-white' : variant === 'light' ? 'text-[#0d0e1a]' : 'text-ink';
 
   return (
     <div className="inline-flex items-center gap-2.5 select-none">
@@ -22,7 +27,7 @@ export function PulsoLogo({ variant = 'light', size = 'md' }: PulsoLogoProps) {
         <defs>
           <linearGradient id={gradientId} x1="0%" y1="50%" x2="100%" y2="50%">
             <stop offset="0%" stopColor="#4F46E5" />
-            <stop offset="100%" stopColor="#7C3AED" />
+            <stop offset="100%" stopColor="#8B2FC9" />
           </linearGradient>
         </defs>
         <path
@@ -33,7 +38,7 @@ export function PulsoLogo({ variant = 'light', size = 'md' }: PulsoLogoProps) {
           strokeLinejoin="round"
         />
       </svg>
-      <span className={`font-bold tracking-tight ${textSize} ${textColor}`}>
+      <span className={`font-bold tracking-[-0.03em] ${textSize} ${textColor}`}>
         PULSO
       </span>
     </div>

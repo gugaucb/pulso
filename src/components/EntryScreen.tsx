@@ -1,14 +1,17 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type CSSProperties, type FormEvent } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
   Globe,
+  Hourglass,
   Loader2,
+  LockKeyhole,
   Moon,
-  PlusCircle,
+  Plus,
   Shield,
   Sun,
   Terminal,
+  UserX,
 } from 'lucide-react';
 import { formatRoomCode, isValidRoomCode, normalizeRoomCode } from '../domain/roomCode';
 import type {
@@ -21,9 +24,20 @@ import type {
 import { LOCALE_OPTIONS, useI18n } from '../i18n';
 import type { CreateRoomOptions } from '../session/useRoomSession';
 import { useTheme } from '../theme/ThemeContext';
+import { PulseLine } from './PulseLine';
 import { PulsoLogo } from './PulsoLogo';
 
 const DEFAULT_RUNTIME_INFO: RuntimeInfo = { runtimeMode: 'normal' };
+
+/** Per-element entrance timing (see choreograph timeline in the visual audit). */
+const beat = (delayMs: number, rise = 12, durMs = 600): CSSProperties =>
+  ({ '--delay': `${delayMs}ms`, '--rise': `${rise}px`, '--dur': `${durMs}ms` }) as CSSProperties;
+
+const FIELD_CLASS =
+  'min-h-[44px] w-full rounded-2xl border border-line-strong bg-surface-2/70 text-ink placeholder:text-ink-3 transition-[border-color,background-color,box-shadow] duration-150 ease-out hover:border-ink-3/40 focus:border-accent focus:bg-surface focus:outline-none focus:ring-4 focus:ring-accent/12 disabled:opacity-60';
+
+const CHROME_BUTTON_CLASS =
+  'min-h-[44px] sm:min-h-[36px] inline-flex items-center justify-center gap-1.5 rounded-full border border-line bg-surface/70 backdrop-blur-md px-3.5 text-xs font-medium text-ink-2 hover:text-ink hover:border-line-strong cursor-pointer';
 
 interface EntryScreenProps {
   status: ConnectionStatus;
@@ -103,305 +117,318 @@ export function EntryScreen({
   const isDark = theme === 'dark';
   const themeAriaLabel = isDark ? t.theme.switchToLight : t.theme.switchToDark;
 
+  const guarantees = [
+    { icon: LockKeyhole, label: t.entry.guaranteeEncrypted },
+    { icon: UserX, label: t.entry.guaranteeNoSignup },
+    { icon: Hourglass, label: t.entry.guaranteeEphemeral },
+  ];
+
+  const modeCardClass = (selected: boolean, locked = false) =>
+    `group relative flex items-start gap-3 rounded-2xl border p-3.5 text-left transition-[border-color,background-color,box-shadow] duration-150 ease-out ${
+      locked
+        ? 'border-line bg-surface-2/50 opacity-55 cursor-not-allowed'
+        : selected
+          ? 'border-accent bg-accent-soft shadow-[0_0_0_3px_var(--accent-soft)] cursor-pointer'
+          : 'border-line bg-surface hover:border-line-strong cursor-pointer'
+    }`;
+
+  const radioClass =
+    'mt-0.5 h-4 w-4 shrink-0 appearance-none rounded-full border border-line-strong bg-surface transition-[border-color,border-width] duration-150 ease-out checked:border-[5px] checked:border-accent disabled:cursor-not-allowed cursor-pointer';
+
   return (
-    <main className="min-h-screen bg-[#F8F9FC] dark:bg-[#1A1C2A] flex flex-col items-center justify-center p-4 sm:p-6 transition-colors">
-      <div className="w-full max-w-md flex items-center justify-end gap-2 mb-3">
-        <div className="relative inline-flex items-center">
-          <Globe
-            className="h-3.5 w-3.5 text-slate-500 dark:text-slate-300 pointer-events-none absolute left-2.5"
-            aria-hidden="true"
-          />
-          <select
-            aria-label={t.localeSelector.label}
-            value={locale}
-            onChange={(e) => setLocale(e.target.value as Locale)}
-            className="min-h-[44px] sm:min-h-0 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] pl-8 pr-3 py-2 sm:py-1.5 text-xs font-medium text-slate-700 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-[#2B2F45] focus:border-[#5B3DF5] focus:outline-none focus:ring-2 focus:ring-[#5B3DF5]/20 focus-visible:ring-2 focus-visible:ring-[#5B3DF5] transition cursor-pointer"
-          >
-            {LOCALE_OPTIONS.map((option) => (
-              <option key={option.code} value={option.code}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
+    <main className="relative isolate min-h-dvh overflow-hidden bg-canvas text-ink">
+      <div className="pulso-atmosphere -z-10" aria-hidden="true" />
 
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-label={themeAriaLabel}
-          aria-pressed={isDark}
-          title={themeAriaLabel}
-          className="min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-[#2E3248] bg-white dark:bg-[#232638] px-3 py-2 sm:py-1.5 text-xs font-medium text-slate-700 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-[#2B2F45] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5] transition cursor-pointer"
-        >
-          {isDark ? (
-            <Sun className="h-3.5 w-3.5 text-amber-400" aria-hidden="true" />
-          ) : (
-            <Moon className="h-3.5 w-3.5 text-[#5B3DF5]" aria-hidden="true" />
-          )}
-          <span className="hidden sm:inline">
-            {isDark ? t.theme.light : t.theme.dark}
-          </span>
-        </button>
-      </div>
-
-      <section className="w-full max-w-md bg-white dark:bg-[#232638] rounded-2xl shadow-lg border border-slate-200/80 dark:border-[#2E3248] p-5 sm:p-8 transition-colors">
-        <div className="flex flex-col items-center text-center mb-6">
-          <PulsoLogo variant={isDark ? 'dark' : 'light'} size="md" />
-          <p className="mt-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-            {t.brand.slogan}
-          </p>
-          <h1 className="mt-4 text-2xl font-bold text-[#111827] dark:text-slate-50 tracking-tight">
-            {t.entry.title}
-          </h1>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            {t.entry.subtitle}
-          </p>
-        </div>
-
-        <form onSubmit={handleJoinSubmit} className="space-y-4" noValidate>
-          <div>
-            <label
-              htmlFor="room-code-input"
-              className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-            >
-              {t.entry.roomCodeLabel}
-            </label>
-            <input
-              id="room-code-input"
-              type="text"
-              inputMode="text"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder={t.entry.roomCodePlaceholder}
-              value={roomCodeInput}
-              onChange={(e) => handleRoomCodeChange(e.target.value)}
-              onBlur={() => setTouched(true)}
-              disabled={isConnecting}
-              aria-invalid={visibleError ? 'true' : 'false'}
-              className="min-h-[44px] w-full rounded-xl border border-slate-300 dark:border-[#2E3248] bg-slate-50/70 dark:bg-[#141522] px-4 py-3 text-center font-mono-tabular text-base tracking-wider text-[#111827] dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-400 focus:border-[#5B3DF5] dark:focus:border-[#6344F5] focus:bg-white dark:focus:bg-[#1B1D2C] focus:outline-none focus:ring-2 focus:ring-[#5B3DF5]/20 transition"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="display-name-input"
-              className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-            >
-              {t.entry.displayNameLabel}
-            </label>
-            <input
-              id="display-name-input"
-              type="text"
-              autoComplete="off"
-              maxLength={32}
-              placeholder={t.entry.displayNamePlaceholder}
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              disabled={isConnecting}
-              className="min-h-[44px] w-full rounded-xl border border-slate-300 dark:border-[#2E3248] bg-white dark:bg-[#141522] px-4 py-2.5 text-sm text-[#111827] dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-400 focus:border-[#5B3DF5] dark:focus:border-[#6344F5] focus:bg-white dark:focus:bg-[#1B1D2C] focus:outline-none focus:ring-2 focus:ring-[#5B3DF5]/20 transition"
-            />
-          </div>
-
-          {visibleError && (
-            <div
-              role="alert"
-              className="flex items-start gap-2.5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800/70 px-3.5 py-2.5 text-xs text-red-700 dark:text-red-200"
-            >
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-500 dark:text-red-400" />
-              <span>{visibleError}</span>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={isConnecting}
-            className="min-h-[44px] w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#5B3DF5] hover:bg-[#4E32D9] active:bg-[#4328C4] disabled:opacity-60 px-4 py-3 text-sm font-semibold text-white shadow-sm transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5] focus-visible:ring-offset-2"
-          >
-            {isConnecting ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>{t.entry.connecting}</span>
-              </>
-            ) : (
-              <span>{t.entry.joinButton}</span>
-            )}
-          </button>
-        </form>
-
-        <div className="relative my-5 flex items-center justify-center">
-          <div className="w-full border-t border-slate-200 dark:border-[#2E3248]" />
-          <span className="bg-white dark:bg-[#232638] px-3 text-xs font-medium text-slate-400 dark:text-slate-400">
-            {t.entry.orDivider}
-          </span>
-        </div>
-
-        <fieldset
-          role="radiogroup"
-          aria-labelledby="entry-mode-label"
-          className="mb-3"
-        >
-          <legend
-            id="entry-mode-label"
-            className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2"
-          >
-            {t.entry.modeLabel}
-          </legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <label
-              className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition ${
-                isTorRuntime
-                  ? 'border-slate-200 dark:border-[#2E3248] bg-slate-100/70 dark:bg-[#141522]/60 opacity-60 cursor-not-allowed'
-                  : effectiveMode === 'normal'
-                    ? 'border-[#5B3DF5] bg-[#EEF0FF]/70 dark:bg-[#2D2856]/60 dark:border-[#6344F5] cursor-pointer'
-                    : 'border-slate-200 dark:border-[#2E3248] bg-slate-50/70 dark:bg-[#141522] hover:border-slate-300 dark:hover:border-slate-600 cursor-pointer'
-              }`}
-            >
-              <input
-                type="radio"
-                name="roomMode"
-                value="normal"
-                checked={effectiveMode === 'normal'}
-                onChange={() => setSelectedMode('normal')}
-                disabled={isConnecting || isTorRuntime}
-                aria-labelledby="mode-normal-title"
-                aria-describedby="mode-normal-desc"
-                className="mt-0.5 accent-[#5B3DF5]"
-              />
-              <span className="min-w-0">
-                <span
-                  id="mode-normal-title"
-                  className="block text-xs font-semibold text-[#111827] dark:text-slate-100"
-                >
-                  {t.entry.normalMode}
-                </span>
-                <span
-                  id="mode-normal-desc"
-                  className="mt-0.5 block text-[11px] leading-snug text-slate-600 dark:text-slate-300"
-                >
-                  {t.entry.normalModeDescription}
-                </span>
-              </span>
-            </label>
-
-            <label
-              className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition cursor-pointer ${
-                effectiveMode === 'tor'
-                  ? 'border-[#5B3DF5] bg-[#EEF0FF]/70 dark:bg-[#2D2856]/60 dark:border-[#6344F5]'
-                  : 'border-slate-200 dark:border-[#2E3248] bg-slate-50/70 dark:bg-[#141522] hover:border-slate-300 dark:hover:border-slate-600'
-              }`}
-            >
-              <input
-                type="radio"
-                name="roomMode"
-                value="tor"
-                checked={effectiveMode === 'tor'}
-                onChange={() => setSelectedMode('tor')}
-                disabled={isConnecting}
-                aria-labelledby="mode-tor-title"
-                aria-describedby="mode-tor-desc"
-                className="mt-0.5 accent-[#5B3DF5]"
-              />
-              <span className="min-w-0">
-                <span
-                  id="mode-tor-title"
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#111827] dark:text-slate-100"
-                >
-                  <Shield className="h-3 w-3 text-[#5B3DF5] dark:text-[#818CF8]" aria-hidden="true" />
-                  <span>{t.entry.torMode}</span>
-                </span>
-                <span
-                  id="mode-tor-desc"
-                  className="mt-0.5 block text-[11px] leading-snug text-slate-600 dark:text-slate-300"
-                >
-                  {t.entry.torModeDescription}
-                </span>
-              </span>
-            </label>
-          </div>
-        </fieldset>
-
-        {isTorGuidanceInNormal && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="mb-3 rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/90 dark:bg-amber-950/40 p-3.5 text-left"
-          >
-            <div className="flex items-start gap-2.5">
-              <Terminal
-                className="h-4 w-4 shrink-0 mt-0.5 text-amber-700 dark:text-amber-300"
+      <div className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-5 sm:px-8">
+        <header className="flex items-center justify-between gap-3 py-5 sm:py-7">
+          <PulsoLogo variant="auto" size="sm" />
+          <div className="flex items-center gap-2">
+            <div className="relative inline-flex items-center">
+              <Globe
+                className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-ink-3"
                 aria-hidden="true"
               />
-              <div className="min-w-0 space-y-1.5">
-                <p className="text-xs font-semibold text-amber-950 dark:text-amber-100">
-                  {t.entry.torLauncherRequiredTitle}
-                </p>
-                <p className="text-xs leading-relaxed text-amber-900/90 dark:text-amber-200/90">
-                  {t.entry.torLauncherRequiredBody}
-                </p>
-                <code className="block rounded-lg bg-slate-900 text-slate-100 px-3 py-2 font-mono-tabular text-xs select-all">
-                  {t.entry.torLauncherCommand}
-                </code>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isTorRuntime && (
-          <div className="mb-3 space-y-2 text-left">
-            <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-              <Shield className="h-3.5 w-3.5 shrink-0 text-[#5B3DF5] dark:text-[#818CF8]" aria-hidden="true" />
-              <span>{t.entry.torRuntimeLockedNotice}</span>
-            </p>
-            {torStatus === 'error' ? (
-              <div
-                role="alert"
-                className="flex items-start gap-2.5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800/70 px-3.5 py-2.5 text-xs text-red-700 dark:text-red-200"
+              <select
+                aria-label={t.localeSelector.label}
+                value={locale}
+                onChange={(e) => setLocale(e.target.value as Locale)}
+                className={`${CHROME_BUTTON_CLASS} appearance-none pl-8 pr-4`}
               >
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-500 dark:text-red-400" aria-hidden="true" />
-                <span>{t.entry.torStatusError}</span>
+                {LOCALE_OPTIONS.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={themeAriaLabel}
+              aria-pressed={isDark}
+              title={themeAriaLabel}
+              className={`${CHROME_BUTTON_CLASS} min-w-[44px] sm:min-w-0`}
+            >
+              {isDark ? (
+                <Sun className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : (
+                <Moon className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+              <span className="hidden sm:inline">{isDark ? t.theme.light : t.theme.dark}</span>
+            </button>
+          </div>
+        </header>
+
+        <div className="grid flex-1 items-center gap-10 pb-10 pt-2 sm:pt-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] lg:gap-20 lg:pb-16">
+          {/* Hero — the one place the signature is drawn. */}
+          <section className="max-w-xl">
+            <PulseLine variant="draw" className="h-10 w-full max-w-sm sm:h-14" />
+
+            <p
+              className="type-eyebrow enter-rise mt-6 text-accent-ink sm:mt-8"
+              style={beat(40, 8, 500)}
+            >
+              {t.brand.slogan}
+            </p>
+            <h1 className="type-display enter-rise mt-4 text-ink" style={beat(80)}>
+              {t.entry.title}
+            </h1>
+            <p
+              className="type-lead enter-rise mt-5 max-w-md text-ink-2"
+              style={beat(160, 10, 560)}
+            >
+              {t.entry.subtitle}
+            </p>
+
+            <ul className="mt-8 hidden gap-3 sm:grid">
+              {guarantees.map(({ icon: Icon, label }, index) => (
+                <li
+                  key={label}
+                  className="enter-rise flex items-center gap-3 text-sm text-ink-2"
+                  style={beat(240 + [0, 60, 100][index], 6, 500)}
+                >
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line bg-surface/70 text-accent-ink">
+                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                  <span>{label}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* Action panel */}
+          <section
+            className="enter-rise w-full rounded-[28px] border border-line bg-surface p-5 shadow-(--shadow-panel) sm:p-7"
+            style={beat(140, 8, 560)}
+          >
+            <form onSubmit={handleJoinSubmit} className="space-y-4" noValidate>
+              <div>
+                <label
+                  htmlFor="room-code-input"
+                  className="mb-2 block text-xs font-medium text-ink-2"
+                >
+                  {t.entry.roomCodeLabel}
+                </label>
+                <input
+                  id="room-code-input"
+                  type="text"
+                  inputMode="text"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  placeholder={t.entry.roomCodePlaceholder}
+                  value={roomCodeInput}
+                  onChange={(e) => handleRoomCodeChange(e.target.value)}
+                  onBlur={() => setTouched(true)}
+                  disabled={isConnecting}
+                  aria-invalid={visibleError ? 'true' : 'false'}
+                  className={`${FIELD_CLASS} font-mono-tabular px-4 py-3.5 text-center text-xl font-semibold tracking-[0.18em] placeholder:font-normal placeholder:tracking-[0.06em] placeholder:text-base aria-[invalid=true]:border-red-400`}
+                />
               </div>
-            ) : (
+
+              <div>
+                <label
+                  htmlFor="display-name-input"
+                  className="mb-2 block text-xs font-medium text-ink-2"
+                >
+                  {t.entry.displayNameLabel}
+                </label>
+                <input
+                  id="display-name-input"
+                  type="text"
+                  autoComplete="off"
+                  maxLength={32}
+                  placeholder={t.entry.displayNamePlaceholder}
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  disabled={isConnecting}
+                  className={`${FIELD_CLASS} px-4 py-3 text-sm`}
+                />
+              </div>
+
+              {visibleError && (
+                <div
+                  role="alert"
+                  className="enter-in flex items-start gap-2.5 rounded-2xl border border-red-200 bg-red-50 px-3.5 py-3 text-xs leading-relaxed text-red-700 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-200"
+                >
+                  <AlertCircle className="mt-px h-4 w-4 shrink-0 text-red-500 dark:text-red-400" aria-hidden="true" />
+                  <span>{visibleError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isConnecting}
+                className="min-h-[48px] w-full inline-flex items-center justify-center gap-2.5 rounded-2xl bg-accent px-4 py-3 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_1px_2px_rgb(16_17_38/0.2),0_8px_20px_-8px_var(--accent)] hover:bg-accent-strong disabled:cursor-wait disabled:opacity-80 cursor-pointer"
+              >
+                {isConnecting ? (
+                  <>
+                    <PulseLine variant="scan" tone="muted" strokeWidth={2} className="h-4 w-9 text-white" />
+                    <span>{t.entry.connecting}</span>
+                  </>
+                ) : (
+                  <span>{t.entry.joinButton}</span>
+                )}
+              </button>
+            </form>
+
+            <div className="my-6 flex items-center gap-3">
+              <span className="h-px flex-1 bg-line" aria-hidden="true" />
+              <span className="type-eyebrow text-ink-3">{t.entry.orDivider}</span>
+              <span className="h-px flex-1 bg-line" aria-hidden="true" />
+            </div>
+
+            <fieldset role="radiogroup" aria-labelledby="entry-mode-label" className="mb-3">
+              <legend id="entry-mode-label" className="mb-2 block text-xs font-medium text-ink-2">
+                {t.entry.modeLabel}
+              </legend>
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                <label className={modeCardClass(effectiveMode === 'normal', isTorRuntime)}>
+                  <input
+                    type="radio"
+                    name="roomMode"
+                    value="normal"
+                    checked={effectiveMode === 'normal'}
+                    onChange={() => setSelectedMode('normal')}
+                    disabled={isConnecting || isTorRuntime}
+                    aria-labelledby="mode-normal-title"
+                    aria-describedby="mode-normal-desc"
+                    className={radioClass}
+                  />
+                  <span className="min-w-0">
+                    <span id="mode-normal-title" className="block text-[13px] font-semibold text-ink">
+                      {t.entry.normalMode}
+                    </span>
+                    <span id="mode-normal-desc" className="mt-1 block text-[11.5px] leading-snug text-ink-2">
+                      {t.entry.normalModeDescription}
+                    </span>
+                  </span>
+                </label>
+
+                <label className={modeCardClass(effectiveMode === 'tor')}>
+                  <input
+                    type="radio"
+                    name="roomMode"
+                    value="tor"
+                    checked={effectiveMode === 'tor'}
+                    onChange={() => setSelectedMode('tor')}
+                    disabled={isConnecting}
+                    aria-labelledby="mode-tor-title"
+                    aria-describedby="mode-tor-desc"
+                    className={radioClass}
+                  />
+                  <span className="min-w-0">
+                    <span
+                      id="mode-tor-title"
+                      className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink"
+                    >
+                      <Shield className="h-3 w-3 text-accent-ink" aria-hidden="true" />
+                      <span>{t.entry.torMode}</span>
+                    </span>
+                    <span id="mode-tor-desc" className="mt-1 block text-[11.5px] leading-snug text-ink-2">
+                      {t.entry.torModeDescription}
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </fieldset>
+
+            {isTorGuidanceInNormal && (
               <div
                 role="status"
                 aria-live="polite"
-                className="flex items-start gap-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/80 dark:bg-indigo-950/40 px-3.5 py-2.5 text-xs text-indigo-950 dark:text-indigo-100"
+                className="enter-in mb-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5 text-left dark:border-amber-400/20 dark:bg-amber-400/[0.07]"
               >
-                {torStatus === 'ready' ? (
-                  <CheckCircle2
-                    className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <Loader2
-                    className="h-4 w-4 shrink-0 mt-0.5 animate-spin text-[#5B3DF5] dark:text-[#818CF8]"
-                    aria-hidden="true"
-                  />
-                )}
-                <div className="min-w-0 space-y-1">
-                  <p className="font-medium">
-                    {torStatus === 'ready' ? t.entry.torStatusReady : t.entry.torStatusBootstrapping}
-                  </p>
-                  {torStatus === 'ready' && runtimeInfo.onionAddress && (
-                    <p className="font-mono-tabular text-[11px] break-all text-indigo-900 dark:text-indigo-200">
-                      {runtimeInfo.onionAddress}
+                <div className="flex items-start gap-2.5">
+                  <Terminal className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden="true" />
+                  <div className="min-w-0 space-y-1.5">
+                    <p className="text-xs font-semibold text-amber-950 dark:text-amber-100">
+                      {t.entry.torLauncherRequiredTitle}
                     </p>
-                  )}
+                    <p className="text-xs leading-relaxed text-amber-900/90 dark:text-amber-200/85">
+                      {t.entry.torLauncherRequiredBody}
+                    </p>
+                    <code className="font-mono-tabular block select-all rounded-xl bg-[#0d0e1a] px-3 py-2 text-xs text-slate-100">
+                      {t.entry.torLauncherCommand}
+                    </code>
+                  </div>
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        <button
-          type="button"
-          onClick={handleCreateClick}
-          disabled={isCreateDisabled}
-          className="min-h-[44px] w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-[#2E3248] bg-white dark:bg-[#1B1D2C] hover:bg-slate-50 dark:hover:bg-[#2B2F45] active:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-3 text-sm font-semibold text-[#111827] dark:text-slate-100 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B3DF5]"
-        >
-          <PlusCircle className="h-4 w-4 text-[#5B3DF5] dark:text-[#818CF8]" />
-          <span>{t.entry.createButton}</span>
-        </button>
-      </section>
+            {isTorRuntime && (
+              <div className="mb-3 space-y-2 text-left">
+                <p className="flex items-center gap-1.5 text-[11.5px] font-medium text-ink-2">
+                  <Shield className="h-3.5 w-3.5 shrink-0 text-accent-ink" aria-hidden="true" />
+                  <span>{t.entry.torRuntimeLockedNotice}</span>
+                </p>
+                {torStatus === 'error' ? (
+                  <div
+                    role="alert"
+                    className="enter-in flex items-start gap-2.5 rounded-2xl border border-red-200 bg-red-50 px-3.5 py-3 text-xs text-red-700 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-200"
+                  >
+                    <AlertCircle className="mt-px h-4 w-4 shrink-0 text-red-500 dark:text-red-400" aria-hidden="true" />
+                    <span>{t.entry.torStatusError}</span>
+                  </div>
+                ) : (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="flex items-start gap-2.5 rounded-2xl border border-line bg-accent-soft px-3.5 py-3 text-xs text-ink"
+                  >
+                    {torStatus === 'ready' ? (
+                      <CheckCircle2 className="mt-px h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                    ) : (
+                      <Loader2 className="mt-px h-4 w-4 shrink-0 animate-spin text-accent-ink" aria-hidden="true" />
+                    )}
+                    <div className="min-w-0 space-y-1">
+                      <p className="font-medium">
+                        {torStatus === 'ready' ? t.entry.torStatusReady : t.entry.torStatusBootstrapping}
+                      </p>
+                      {torStatus === 'ready' && runtimeInfo.onionAddress && (
+                        <p className="font-mono-tabular break-all text-[11px] text-ink-2">
+                          {runtimeInfo.onionAddress}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleCreateClick}
+              disabled={isCreateDisabled}
+              className="min-h-[44px] w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-line-strong bg-surface px-4 py-3 text-sm font-semibold text-ink hover:border-ink-3/50 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
+            >
+              <Plus className="h-4 w-4 text-accent-ink" aria-hidden="true" />
+              <span>{t.entry.createButton}</span>
+            </button>
+          </section>
+        </div>
+      </div>
     </main>
   );
 }

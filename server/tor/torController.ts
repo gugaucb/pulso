@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { accessSync, constants, statSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -47,6 +47,7 @@ export interface TorControllerOptions {
   spawnFn?: typeof spawn;
   connectFn?: (endpoint: ControlEndpoint) => Duplex;
   randomBytesFn?: (size: number) => Buffer;
+  execFileSyncFn?: typeof execFileSync;
 }
 
 function isExecutableFile(filePath: string, platform: NodeJS.Platform): boolean {
@@ -112,6 +113,36 @@ export function resolveTorBinary(options: ResolveTorBinaryOptions = {}): string 
   }
 
   throw missingTorBinaryError('Tor daemon binary not found');
+}
+
+/**
+ * Ensures Mach-O executables on macOS (especially Apple Silicon arm64) carry a valid code signature.
+ * Unsigned arm64 binaries are terminated by the macOS kernel with SIGKILL (code 137).
+ */
+export function ensureDarwinBinarySigned(
+  binaryPath: string,
+  platform: NodeJS.Platform = process.platform,
+  execFileImpl: typeof execFileSync = execFileSync,
+): void {
+  if (platform !== 'darwin') return;
+  try {
+    execFileImpl('codesign', ['-v', binaryPath], { stdio: 'ignore' });
+  } catch {
+    try {
+      const dylib = path.join(path.dirname(binaryPath), 'libevent-2.1.7.dylib');
+      try {
+        const stat = statSync(dylib);
+        if (stat.isFile()) {
+          execFileImpl('codesign', ['-s', '-', '--force', dylib], { stdio: 'ignore' });
+        }
+      } catch {
+        // sibling dylib is optional
+      }
+      execFileImpl('codesign', ['-s', '-', '--force', binaryPath], { stdio: 'ignore' });
+    } catch {
+      // If codesign fails or is unavailable, let execution proceed to spawn
+    }
+  }
 }
 
 function formatTorrcPath(filePath: string): string {
@@ -294,6 +325,10 @@ export class TorController extends EventEmitter {
         { encoding: 'utf8', mode: 0o600 },
       );
 
+      const platform = this.options.platform ?? process.platform;
+      const execFileImpl = this.options.execFileSyncFn ?? execFileSync;
+      ensureDarwinBinarySigned(torBinary, platform, execFileImpl);
+
       this.spawnTorProcess(torBinary, torrcPath);
 
       const { endpoint, cookieBytes } = await this.waitForControlArtifacts(
@@ -372,7 +407,17 @@ export class TorController extends EventEmitter {
 
     child.once('exit', (code, signal) => {
       if (!this.stopping && this.currentStatus !== 'ready') {
-        const detail = this.stderrTail.trim() ? ` (${this.stderrTail.trim()})` : '';
+        const detailParts: string[] = [];
+        if (this.stderrTail.trim()) {
+          detailParts.push(this.stderrTail.trim());
+        }
+        const platform = this.options.platform ?? process.platform;
+        if (signal === 'SIGKILL' && platform === 'darwin') {
+          detailParts.push(
+            'macOS killed Tor with SIGKILL. On Apple Silicon, verify that Tor binary is ad-hoc signed (`codesign -s - --force <path>`) or reinstall via `node scripts/fetch-tor-bundle.mjs`',
+          );
+        }
+        const detail = detailParts.length > 0 ? ` (${detailParts.join(' - ')})` : '';
         this.childExitError = new Error(
           `Tor process exited prematurely (code=${String(code)}, signal=${String(signal)})${detail}`,
         );

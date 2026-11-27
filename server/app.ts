@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
@@ -38,13 +38,27 @@ export interface CreateServerOptions {
   onAllRoomsClosed?: () => void;
 }
 
-function resolveDefaultStaticDir(): string {
+export function resolveDefaultStaticDir(): string {
   const currentDir = dirname(fileURLToPath(import.meta.url));
-  const bundledDist = resolve(currentDir, '..');
-  if (existsSync(resolve(bundledDist, 'index.html'))) {
-    return bundledDist;
+
+  // If running from compiled server inside dist/server/
+  const parentDir = resolve(currentDir, '..');
+  if (existsSync(resolve(parentDir, 'index.html')) && existsSync(resolve(parentDir, 'assets'))) {
+    return parentDir;
   }
-  return resolve(process.cwd(), 'dist');
+
+  // If running from source (e.g. tsx server/...) or project root
+  const cwdDist = resolve(process.cwd(), 'dist');
+  if (existsSync(resolve(cwdDist, 'index.html'))) {
+    return cwdDist;
+  }
+
+  const siblingDist = resolve(currentDir, '..', 'dist');
+  if (existsSync(resolve(siblingDist, 'index.html'))) {
+    return siblingDist;
+  }
+
+  return cwdDist;
 }
 
 function isServerInternalPath(pathname: string): boolean {
@@ -239,7 +253,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
 
   app.setNotFoundHandler((request, reply) => {
     const pathname = request.url.split('?')[0] ?? '/';
-    if (request.method === 'GET' && hasIndexHtml && !isApiOrControlPath(pathname)) {
+    const hasExtension = Boolean(extname(pathname));
+    if (request.method === 'GET' && hasIndexHtml && !isApiOrControlPath(pathname) && !hasExtension) {
       return reply.sendFile('index.html');
     }
     return reply.code(404).send({ error: 'Not Found' });

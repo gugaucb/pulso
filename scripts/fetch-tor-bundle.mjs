@@ -179,6 +179,20 @@ async function main() {
     if (!existsSync(expectedBinary)) {
       throw new Error(`Extracted bundle did not contain expected binary at ${expectedBinary}`);
     }
+
+    if (target.startsWith('macos-') || process.platform === 'darwin') {
+      try {
+        const dylib = path.join(opts.outDir, 'tor', 'libevent-2.1.7.dylib');
+        if (existsSync(dylib)) {
+          execFileSync('codesign', ['-s', '-', '--force', dylib], { stdio: 'ignore' });
+        }
+        execFileSync('codesign', ['-s', '-', '--force', expectedBinary], { stdio: 'ignore' });
+        console.log(`Applied macOS ad-hoc code signature to ${expectedBinary}`);
+      } catch (err) {
+        console.warn(`Warning: Could not ad-hoc codesign ${expectedBinary}: ${err.message}`);
+      }
+    }
+
     console.log(`Tor Expert Bundle ready at ${expectedBinary}`);
   } finally {
     await rm(archivePath, { force: true });

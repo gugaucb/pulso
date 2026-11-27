@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WS_PROTOCOL_VERSION, type ServerWsMessage } from '../shared/protocol';
-import { createServer } from './app';
+import { createServer, resolveDefaultStaticDir } from './app';
 import { ManualClock } from './clock';
 
 function nextWsMessage(ws: { once: (event: string, cb: (data: Buffer) => void) => void }): Promise<ServerWsMessage> {
@@ -60,6 +60,22 @@ describe('Fastify app in-process seam (inject + injectWS)', () => {
 
     const api404 = await app.inject({ method: 'GET', url: '/api/unknown' });
     expect(api404.statusCode).toBe(404);
+  });
+
+  it('resolves staticDir to built dist and never exposes raw development /src/main.tsx', async () => {
+    const resolvedDir = resolveDefaultStaticDir();
+    expect(resolvedDir.endsWith('dist')).toBe(true);
+
+    const app = await createServer();
+    cleanups.push(() => app.close());
+
+    const rootRes = await app.inject({ method: 'GET', url: '/' });
+    expect(rootRes.statusCode).toBe(200);
+    // Built index.html references /assets/, not unbundled /src/main.tsx
+    expect(rootRes.body).not.toContain('/src/main.tsx');
+
+    const rawSrcRes = await app.inject({ method: 'GET', url: '/src/main.tsx' });
+    expect(rawSrcRes.statusCode).toBe(404);
   });
 
   it('returns live runtime updates from getRuntimeInfo on GET /api/runtime without exposing extra fields', async () => {

@@ -41,6 +41,9 @@ export interface TranslationDictionary {
     torStatusBootstrapping: string;
     torStatusReady: string;
     torStatusError: string;
+    guaranteeEncrypted: string;
+    guaranteeNoSignup: string;
+    guaranteeEphemeral: string;
   };
   errors: Record<RoomErrorCode, string> & {
     dismissError: string;
