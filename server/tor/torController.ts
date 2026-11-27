@@ -1,6 +1,6 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { accessSync, constants, statSync } from 'node:fs';
+import { accessSync, constants, readdirSync, statSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
@@ -129,14 +129,17 @@ export function ensureDarwinBinarySigned(
     execFileImpl('codesign', ['-v', binaryPath], { stdio: 'ignore' });
   } catch {
     try {
-      const dylib = path.join(path.dirname(binaryPath), 'libevent-2.1.7.dylib');
+      const binDir = path.dirname(binaryPath);
       try {
-        const stat = statSync(dylib);
-        if (stat.isFile()) {
-          execFileImpl('codesign', ['-s', '-', '--force', dylib], { stdio: 'ignore' });
+        for (const entry of readdirSync(binDir)) {
+          if (!entry.endsWith('.dylib')) continue;
+          const candidate = path.join(binDir, entry);
+          if (statSync(candidate).isFile()) {
+            execFileImpl('codesign', ['-s', '-', '--force', candidate], { stdio: 'ignore' });
+          }
         }
       } catch {
-        // sibling dylib is optional
+        // sibling dylibs are optional
       }
       execFileImpl('codesign', ['-s', '-', '--force', binaryPath], { stdio: 'ignore' });
     } catch {

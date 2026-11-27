@@ -646,6 +646,38 @@ describe('ensureDarwinBinarySigned', () => {
       stdio: 'ignore',
     });
   });
+
+  it('dynamically signs any sibling .dylib files regardless of version alongside tor binary on darwin', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pulso-codesign-'));
+    try {
+      const torPath = createExecutable(join(dir, 'tor'));
+      const dylibPath = join(dir, 'libevent-2.2.0.dylib');
+      writeFileSync(dylibPath, 'dylib', 'utf8');
+      writeFileSync(join(dir, 'README.txt'), 'ignore', 'utf8');
+
+      const mockExec = vi.fn().mockImplementation((_cmd, args) => {
+        if (args[0] === '-v') {
+          throw new Error('code object is not signed at all');
+        }
+      });
+
+      ensureDarwinBinarySigned(torPath, 'darwin', mockExec as any);
+
+      expect(mockExec).toHaveBeenCalledWith('codesign', ['-s', '-', '--force', dylibPath], {
+        stdio: 'ignore',
+      });
+      expect(mockExec).toHaveBeenCalledWith('codesign', ['-s', '-', '--force', torPath], {
+        stdio: 'ignore',
+      });
+      expect(mockExec).not.toHaveBeenCalledWith(
+        'codesign',
+        ['-s', '-', '--force', join(dir, 'README.txt')],
+        expect.anything(),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('TorController real loopback TCP integration', () => {

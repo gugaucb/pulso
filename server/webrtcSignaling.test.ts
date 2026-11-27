@@ -377,4 +377,89 @@ describe('WebRTC signaling & Tor blocking (Fastify injectWS)', () => {
     await new Promise((r) => setTimeout(r, 25));
     expect(guestMessages).toEqual([]);
   });
+
+  it('forces Tor mode, omits iceServers, and rejects call_signal when server runtimeMode is tor even if client requests mode normal', async () => {
+    const torOnion = 'http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion';
+    const app = await createServer({
+      clock: new ManualClock(1_700_000_000_000),
+      runtimeInfo: {
+        runtimeMode: 'tor',
+        torStatus: 'ready',
+        onionAddress: torOnion,
+      },
+      iceServersProvider: () => [{ urls: ['stun:stun.l.google.com:19302'] }],
+    });
+    await app.ready();
+    cleanups.push(() => app.close());
+
+    const hostWs = await app.injectWS('/ws');
+    const guestWs = await app.injectWS('/ws');
+    cleanups.push(() => hostWs.close());
+    cleanups.push(() => guestWs.close());
+
+    const hostJoinedPromise = nextWsMessage(hostWs);
+    hostWs.send(
+      JSON.stringify({
+        type: 'create_room',
+        version: WS_PROTOCOL_VERSION,
+        roomCode: 'T8R4-M2P9',
+        displayName: 'Ana',
+        mode: 'normal',
+      }),
+    );
+    const hostJoined = await hostJoinedPromise;
+    expect(hostJoined).toMatchObject({
+      type: 'room_joined',
+      mode: 'tor',
+      onionAddress: torOnion,
+    });
+    expect(hostJoined).not.toHaveProperty('iceServers');
+
+    const guestJoinedPromise = nextWsMessage(guestWs);
+    const hostPeerPromise = nextWsMessage(hostWs);
+    guestWs.send(
+      JSON.stringify({
+        type: 'join_room',
+        version: WS_PROTOCOL_VERSION,
+        roomCode: 'T8R4-M2P9',
+        displayName: 'João',
+      }),
+    );
+    const [guestJoined] = await Promise.all([guestJoinedPromise, hostPeerPromise]);
+    expect(guestJoined).toMatchObject({
+      type: 'room_joined',
+      mode: 'tor',
+      onionAddress: torOnion,
+    });
+    expect(guestJoined).not.toHaveProperty('iceServers');
+
+    const guestMessages: ServerWsMessage[] = [];
+    guestWs.on('message', (data: Buffer) => {
+      guestMessages.push(JSON.parse(data.toString('utf8')) as ServerWsMessage);
+    });
+
+    const hostErrorPromise = nextWsMessage(hostWs);
+    hostWs.send(
+      JSON.stringify({
+        type: 'call_signal',
+        version: WS_PROTOCOL_VERSION,
+        signal: {
+          type: 'offer',
+          fromId: 'host',
+          payload: { type: 'offer', sdp: 'v=0' },
+        },
+      }),
+    );
+
+    const hostError = await hostErrorPromise;
+    expect(hostError).toEqual({
+      type: 'room_error',
+      version: WS_PROTOCOL_VERSION,
+      code: 'tor_video_blocked',
+      message: 'Video calls are blocked in Tor mode',
+    });
+
+    await new Promise((r) => setTimeout(r, 25));
+    expect(guestMessages).toEqual([]);
+  });
 });

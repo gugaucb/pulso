@@ -279,6 +279,34 @@ describe('RoomStore lifecycle: authoritative inactivity timer & 24h hard TTL', (
       }
     }
   });
+
+  it('caps client-requested inactivityDurationMs to authoritative 60m default', () => {
+    const start = 1_700_000_000_000;
+    const clock = new ManualClock(start);
+    const store = new RoomStore(clock);
+    const host = createFakeClient();
+
+    store.handleMessage(host.client, {
+      type: 'create_room',
+      version: WS_PROTOCOL_VERSION,
+      roomCode: 'CAP6-24HR',
+      displayName: 'Ana',
+      mode: 'normal',
+      inactivityDurationMs: 24 * 60 * 60 * 1000,
+    });
+
+    expect(host.sent[0]).toMatchObject({
+      type: 'room_joined',
+      expiresAt: start + 60 * 60 * 1000,
+    });
+
+    clock.advanceBy(60 * 60 * 1000);
+    expect(host.sent.at(-1)).toEqual({
+      type: 'room_expired',
+      version: WS_PROTOCOL_VERSION,
+      reason: 'inactivity',
+    });
+  });
 });
 
 describe('RoomStore lifecycle: explicit leave vs 30s grace window & reconnect_room', () => {

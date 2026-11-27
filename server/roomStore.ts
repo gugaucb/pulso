@@ -7,6 +7,7 @@ import {
   type ParticipantRole,
   type RoomExpiryReason,
   type RoomMode,
+  type RuntimeInfo,
   type ServerWsMessage,
   type WireEncryptedEnvelope,
 } from '../shared/protocol';
@@ -27,6 +28,7 @@ export interface RoomStoreOptions {
   graceWindowMs?: number;
   maxRooms?: number;
   security?: SecurityManager;
+  getRuntimeInfo?: () => RuntimeInfo;
   iceServersProvider?: () => IceServerConfig[];
   onAllRoomsClosed?: () => void;
 }
@@ -109,6 +111,7 @@ export class RoomStore {
   private readonly graceWindowMs: number;
   private readonly maxRooms: number;
   private readonly security?: SecurityManager;
+  private readonly getRuntimeInfo?: () => RuntimeInfo;
   private readonly iceServersProvider: () => IceServerConfig[];
   private readonly onAllRoomsClosed?: () => void;
   private readonly rooms = new Map<string, RoomRecord>();
@@ -142,6 +145,7 @@ export class RoomStore {
       resolveEnvPositiveMs('PULSO_MAX_ROOMS', DEFAULT_MAX_ROOMS),
     );
     this.security = resolvedOptions.security;
+    this.getRuntimeInfo = resolvedOptions.getRuntimeInfo;
     this.iceServersProvider =
       resolvedOptions.iceServersProvider ?? (() => buildIceServers(process.env));
     this.onAllRoomsClosed = resolvedOptions.onAllRoomsClosed;
@@ -264,8 +268,18 @@ export class RoomStore {
       }
     }
 
-    const mode: RoomMode = msg.mode === 'tor' ? 'tor' : 'normal';
-    const durationMs = resolveOptionMs(msg.inactivityDurationMs, this.defaultInactivityMs);
+    const runtimeInfo = this.getRuntimeInfo?.();
+    const mode: RoomMode =
+      runtimeInfo?.runtimeMode === 'tor'
+        ? 'tor'
+        : msg.mode === 'tor'
+          ? 'tor'
+          : 'normal';
+    const requestedDurationMs = resolveOptionMs(
+      msg.inactivityDurationMs,
+      this.defaultInactivityMs,
+    );
+    const durationMs = Math.min(requestedDurationMs, this.defaultInactivityMs);
     const createdAt = this.clock.now();
     const hardExpiresAt = createdAt + this.hardTtlMs;
     const expiresAt = Math.min(createdAt + durationMs, hardExpiresAt);
@@ -280,7 +294,7 @@ export class RoomStore {
     const room: RoomRecord = {
       roomCode: code,
       mode,
-      onionAddress: mode === 'tor' ? msg.onionAddress : undefined,
+      onionAddress: mode === 'tor' ? (msg.onionAddress ?? runtimeInfo?.onionAddress) : undefined,
       createdAt,
       hardExpiresAt,
       inactivityDurationMs: durationMs,

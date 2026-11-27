@@ -42,5 +42,5 @@ node scripts/fetch-tor-bundle.mjs --verify ./tor-expert-bundle.tar.gz --sha256 <
 Como alternativa, instale o pacote `tor` do sistema operacional ou aponte `PULSO_TOR_BIN` diretamente para o binário desejado:
 
 ```bash
-PULSO_TOR_BIN=//Users/gustavoluiscosta/Downloads/projetos/pulse/.tor-bin/tor/tor npm run start
+PULSO_TOR_BIN=/caminho/para/tor npm run start:tor
 ```

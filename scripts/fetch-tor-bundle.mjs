@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -182,9 +182,13 @@ async function main() {
 
     if (target.startsWith('macos-') || process.platform === 'darwin') {
       try {
-        const dylib = path.join(opts.outDir, 'tor', 'libevent-2.1.7.dylib');
-        if (existsSync(dylib)) {
-          execFileSync('codesign', ['-s', '-', '--force', dylib], { stdio: 'ignore' });
+        const binDir = path.dirname(expectedBinary);
+        for (const entry of readdirSync(binDir)) {
+          if (!entry.endsWith('.dylib')) continue;
+          const candidate = path.join(binDir, entry);
+          if (statSync(candidate).isFile()) {
+            execFileSync('codesign', ['-s', '-', '--force', candidate], { stdio: 'ignore' });
+          }
         }
         execFileSync('codesign', ['-s', '-', '--force', expectedBinary], { stdio: 'ignore' });
         console.log(`Applied macOS ad-hoc code signature to ${expectedBinary}`);

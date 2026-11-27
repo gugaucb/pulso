@@ -134,17 +134,18 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
       ? Math.floor(options.maxWsPayloadBytes)
       : MAX_WS_PAYLOAD_BYTES;
 
+  const staticRuntimeInfo: RuntimeInfo = options.runtimeInfo ?? { runtimeMode: 'normal' };
+  const resolveRuntimeInfo = options.getRuntimeInfo ?? (() => staticRuntimeInfo);
   const roomStore = new RoomStore(clock, {
     inactivityDurationMs: options.inactivityDurationMs,
     hardTtlMs: options.hardTtlMs,
     graceWindowMs: options.graceWindowMs,
     maxRooms: options.maxRooms,
     security,
+    getRuntimeInfo: resolveRuntimeInfo,
     iceServersProvider: options.iceServersProvider,
     onAllRoomsClosed: options.onAllRoomsClosed,
   });
-  const staticRuntimeInfo: RuntimeInfo = options.runtimeInfo ?? { runtimeMode: 'normal' };
-  const resolveRuntimeInfo = options.getRuntimeInfo ?? (() => staticRuntimeInfo);
   const staticDir = options.staticDir ?? resolveDefaultStaticDir();
   const originHashByRawRequest = new WeakMap<object, string>();
 

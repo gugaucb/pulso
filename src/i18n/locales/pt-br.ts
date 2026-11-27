@@ -42,7 +42,7 @@ export const ptBr: TranslationDictionary = {
     torStatusReady: 'Serviço .onion pronto para criar a Sala.',
     torStatusError: 'Falha ao iniciar o daemon Tor. Verifique o binário tor (ou PULSO_TOR_BIN) e reinicie o launcher local.',
     guaranteeEncrypted: 'Cifrado ponta a ponta, no seu navegador',
-    guaranteeNoSignup: 'Sem cadastro, sem histórico',
+    guaranteeNoSignup: 'Sem cadastro, sem armazenamento e sem histórico',
     guaranteeEphemeral: 'Some após 60 min de silêncio',
   },
   errors: {
