@@ -52,32 +52,74 @@ export function resolveTrustProxy(env: NodeJS.ProcessEnv = process.env): boolean
   return raw === 'true' || raw === '1';
 }
 
-export function resolveDefaultStaticDir(): string {
-  const envStaticDir = process.env.PULSO_STATIC_DIR?.trim();
+export interface ResolveStaticDirOptions {
+  env?: NodeJS.ProcessEnv;
+  cwd?: string;
+  execPath?: string;
+  importMetaUrl?: string;
+  dirnamePath?: string;
+}
+
+export function resolveDefaultStaticDir(options: ResolveStaticDirOptions = {}): string {
+  const env = options.env ?? process.env;
+  const cwd = options.cwd ?? process.cwd();
+  const execPath = options.execPath ?? process.execPath;
+
+  const envStaticDir = env.PULSO_STATIC_DIR?.trim();
   if (envStaticDir) {
-    return resolve(envStaticDir);
+    return resolve(cwd, envStaticDir);
   }
 
-  const currentDir = dirname(fileURLToPath(import.meta.url));
-
-  // If running from compiled server inside dist/server/
-  const parentDir = resolve(currentDir, '..');
-  if (existsSync(resolve(parentDir, 'index.html')) && existsSync(resolve(parentDir, 'assets'))) {
-    return parentDir;
+  let currentDir: string | undefined;
+  const metaUrl =
+    options.importMetaUrl !== undefined
+      ? options.importMetaUrl
+      : typeof import.meta !== 'undefined'
+        ? import.meta.url
+        : undefined;
+  if (typeof metaUrl === 'string' && metaUrl.length > 0) {
+    try {
+      currentDir = dirname(fileURLToPath(metaUrl));
+    } catch {
+      currentDir = undefined;
+    }
+  }
+  if (!currentDir) {
+    const fallbackDirname =
+      options.dirnamePath !== undefined
+        ? options.dirnamePath
+        : typeof __dirname === 'string'
+          ? __dirname
+          : undefined;
+    if (fallbackDirname && fallbackDirname.length > 0) {
+      currentDir = fallbackDirname;
+    }
   }
 
-  // If running from source (e.g. tsx server/...) or project root
-  const cwdDist = resolve(process.cwd(), 'dist');
-  if (existsSync(resolve(cwdDist, 'index.html'))) {
-    return cwdDist;
+  if (currentDir) {
+    // If running from compiled server inside dist/server/
+    const parentDir = resolve(currentDir, '..');
+    if (existsSync(resolve(parentDir, 'index.html')) && existsSync(resolve(parentDir, 'assets'))) {
+      return parentDir;
+    }
   }
 
-  const siblingDist = resolve(currentDir, '..', 'dist');
-  if (existsSync(resolve(siblingDist, 'index.html'))) {
-    return siblingDist;
+  const execDir = dirname(execPath);
+  const candidates = [
+    resolve(cwd, 'dist'),
+    ...(currentDir ? [resolve(currentDir, '..', 'dist')] : []),
+    resolve(execDir, 'dist'),
+    resolve(execDir, '..', 'Resources', 'dist'),
+    resolve(execDir, 'resources', 'dist'),
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(resolve(candidate, 'index.html'))) {
+      return candidate;
+    }
   }
 
-  return cwdDist;
+  return resolve(cwd, 'dist');
 }
 
 function isServerInternalPath(pathname: string): boolean {

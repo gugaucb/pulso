@@ -11,15 +11,22 @@ import {
   TorController,
   createEphemeralTorDataDir,
   purgeStaleTorDataDirs,
+  type TorBridgeMode,
   type TorControllerOptions,
   type TorControllerState,
+  type TorProgressEvent,
+  type TorStallEvent,
 } from './tor/torController';
 
 const LOOPBACK_HOST = '127.0.0.1';
 
 export interface TorControllerLike {
   on(event: 'status', listener: (state: TorControllerState) => void): unknown;
+  on(event: 'progress', listener: (event: TorProgressEvent) => void): unknown;
+  on(event: 'stall', listener: (event: TorStallEvent) => void): unknown;
   off?(event: 'status', listener: (state: TorControllerState) => void): unknown;
+  off?(event: 'progress', listener: (event: TorProgressEvent) => void): unknown;
+  off?(event: 'stall', listener: (event: TorStallEvent) => void): unknown;
   start(): Promise<string>;
   stop(): Promise<void>;
 }
@@ -28,6 +35,9 @@ export interface StartTorServerOptions {
   port?: number;
   dataDir?: string;
   torBinaryPath?: string;
+  lyrebirdBinaryPath?: string;
+  bridgeMode?: TorBridgeMode;
+  customBridges?: string | readonly string[];
   env?: NodeJS.ProcessEnv;
   cwd?: string;
   staticDir?: string;
@@ -37,6 +47,10 @@ export interface StartTorServerOptions {
   autoStopOnRoomClose?: boolean;
   log?: (message: string) => void;
   errorLog?: (message: string) => void;
+  onListening?: (info: { port: number; localUrl: string; dataDir: string }) => void;
+  onTorStatus?: (state: TorControllerState) => void;
+  onTorProgress?: (event: TorProgressEvent) => void;
+  onTorStall?: (event: TorStallEvent) => void;
   createTorController?: (options: TorControllerOptions) => TorControllerLike;
 }
 
@@ -102,6 +116,7 @@ export async function startTorServer(options: StartTorServerOptions = {}): Promi
   const boundPort = typeof address === 'object' && address !== null ? address.port : requestedPort;
   const localUrl = `http://${LOOPBACK_HOST}:${boundPort}`;
 
+  options.onListening?.({ port: boundPort, localUrl, dataDir });
   log(`PULSO Modo Tor host UI available at ${localUrl}`);
   log('Tor status: bootstrapping...');
 
@@ -111,6 +126,9 @@ export async function startTorServer(options: StartTorServerOptions = {}): Promi
     localPort: boundPort,
     dataDir,
     torBinaryPath: options.torBinaryPath,
+    lyrebirdBinaryPath: options.lyrebirdBinaryPath,
+    bridgeMode: options.bridgeMode,
+    customBridges: options.customBridges,
     env,
     cwd,
   });
@@ -131,22 +149,31 @@ export async function startTorServer(options: StartTorServerOptions = {}): Promi
   const onStatus = (state: TorControllerState) => {
     if (state.status === 'ready' && state.onionAddress) {
       markTorReady(state.onionAddress);
-      return;
-    }
-    if (state.status === 'error') {
+    } else if (state.status === 'error') {
       runtimeInfo = {
         runtimeMode: 'tor',
         torStatus: 'error',
       };
-      return;
+    } else {
+      runtimeInfo = {
+        runtimeMode: 'tor',
+        torStatus: 'bootstrapping',
+      };
     }
-    runtimeInfo = {
-      runtimeMode: 'tor',
-      torStatus: 'bootstrapping',
-    };
+    options.onTorStatus?.(state);
+  };
+
+  const onProgress = (event: TorProgressEvent) => {
+    options.onTorProgress?.(event);
+  };
+
+  const onStall = (event: TorStallEvent) => {
+    options.onTorStall?.(event);
   };
 
   torController.on('status', onStatus);
+  torController.on('progress', onProgress);
+  torController.on('stall', onStall);
 
   let stopPromise: Promise<void> | undefined;
   let signalHandler: (() => void) | undefined;
@@ -166,6 +193,8 @@ export async function startTorServer(options: StartTorServerOptions = {}): Promi
     stopPromise = (async () => {
       detachSignals();
       torController.off?.('status', onStatus);
+      torController.off?.('progress', onProgress);
+      torController.off?.('stall', onStall);
       await torController.stop().catch(() => {});
       await rm(dataDir, { recursive: true, force: true }).catch(() => {});
       await app.close().catch(() => {});
@@ -222,12 +251,14 @@ export async function startTorServer(options: StartTorServerOptions = {}): Promi
 
 function isDirectExecution(): boolean {
   if (process.env.VITEST) return false;
+  const moduleUrl = typeof import.meta !== 'undefined' ? import.meta.url : undefined;
+  if (!moduleUrl) return false;
   const entry = process.argv[1];
   if (!entry) return false;
   try {
-    return fileURLToPath(import.meta.url) === realpathSync(entry);
+    return fileURLToPath(moduleUrl) === realpathSync(entry);
   } catch {
-    return fileURLToPath(import.meta.url) === path.resolve(entry);
+    return fileURLToPath(moduleUrl) === path.resolve(entry);
   }
 }
 
