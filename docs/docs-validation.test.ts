@@ -70,6 +70,34 @@ function readGuide(locale: Locale, fileName: (typeof EXPECTED_GUIDE_FILES)[numbe
   return readFileSync(path.join(GUIDES_DIR, locale, fileName), 'utf8');
 }
 
+const ROOT_README_FILES = [
+  'README.md',
+  'README.pt-BR.md',
+  'README.es.md',
+  'README.zh-CN.md',
+] as const;
+
+function extractRelativeAssetAndMarkdownLinks(markdown: string): string[] {
+  const links = extractRelativeMarkdownLinks(markdown);
+  const cleaned = stripFencedCodeAndInlineCode(markdown);
+  const srcRegex = /\b(?:src|href)=["']([^"']+)["']/gi;
+  for (const match of cleaned.matchAll(srcRegex)) {
+    const rawTarget = match[1].trim();
+    if (
+      !rawTarget ||
+      rawTarget.startsWith('#') ||
+      /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(rawTarget)
+    ) {
+      continue;
+    }
+    const cleanPath = rawTarget.split('#')[0].split('?')[0];
+    if (cleanPath) {
+      links.push(cleanPath);
+    }
+  }
+  return links;
+}
+
 describe('PULSO documentation structure and links', () => {
   it('provides matching guide files across all 4 locales (pt-br, en, es, zh-CN)', () => {
     expect(existsSync(path.join(GUIDES_DIR, 'README.md'))).toBe(true);
@@ -84,6 +112,40 @@ describe('PULSO documentation structure and links', () => {
         [...EXPECTED_GUIDE_FILES].sort(),
       );
     }
+  });
+
+  it('provides open-source root READMEs in all 4 languages with valid cross-links, logo, and startup commands', () => {
+    const brokenLinks: string[] = [];
+
+    for (const fileName of ROOT_README_FILES) {
+      const fullPath = path.join(ROOT_DIR, fileName);
+      expect(existsSync(fullPath), `Missing root README: ${fileName}`).toBe(true);
+
+      const content = readFileSync(fullPath, 'utf8');
+      expect(content, `${fileName}: missing gugaucb/pulso link`).toContain('gugaucb/pulso');
+      expect(content, `${fileName}: missing logo asset`).toContain('./docs/design/pulso-logo.jpg');
+      expect(content, `${fileName}: missing npm run dev`).toContain('npm run dev');
+      expect(content, `${fileName}: missing npm run start:tor`).toContain('npm run start:tor');
+      expect(content, `${fileName}: missing docker compose`).toContain('docker compose');
+      expect(content, `${fileName}: missing LICENSE link`).toContain('./LICENSE');
+
+      for (const peerFile of ROOT_README_FILES) {
+        if (peerFile !== fileName) {
+          expect(content, `${fileName}: missing language switcher link to ${peerFile}`).toContain(
+            `./${peerFile}`,
+          );
+        }
+      }
+
+      for (const link of extractRelativeAssetAndMarkdownLinks(content)) {
+        const resolved = path.resolve(ROOT_DIR, link);
+        if (!existsSync(resolved)) {
+          brokenLinks.push(`${fileName} -> ${link}`);
+        }
+      }
+    }
+
+    expect(brokenLinks, `Broken root README links found:\n${brokenLinks.join('\n')}`).toEqual([]);
   });
 
   it('resolves every relative markdown link under docs/ to an existing file in the repository', () => {
@@ -173,17 +235,28 @@ describe('PULSO pt-br GLOSSARY.md compliance', () => {
     { label: 'dono do servidor', regex: /\bdono do servidor\b/gi },
   ];
 
-  it('uses every canonical GLOSSARY.md term across docs/guides/pt-br/', () => {
-    const ptBrAll = EXPECTED_GUIDE_FILES.map((file) => readGuide('pt-br', file)).join('\n');
+  it('uses every canonical GLOSSARY.md term across docs/guides/pt-br/ and README.pt-BR.md', () => {
+    const ptBrAll = [
+      ...EXPECTED_GUIDE_FILES.map((file) => readGuide('pt-br', file)),
+      readFileSync(path.join(ROOT_DIR, 'README.pt-BR.md'), 'utf8'),
+    ].join('\n');
     for (const term of CANONICAL_PT_BR_TERMS) {
-      expect(ptBrAll, `Missing canonical GLOSSARY term '${term}' in pt-br guides`).toContain(term);
+      expect(ptBrAll, `Missing canonical GLOSSARY term '${term}' in pt-br docs`).toContain(term);
+    }
+
+    const ptBrReadme = readFileSync(path.join(ROOT_DIR, 'README.pt-BR.md'), 'utf8');
+    for (const term of CANONICAL_PT_BR_TERMS) {
+      expect(ptBrReadme, `Missing canonical GLOSSARY term '${term}' in README.pt-BR.md`).toContain(
+        term,
+      );
     }
   });
 
-  it('does not use GLOSSARY.md avoided synonyms in pt-br guides or docs/tor-mode.md prose', () => {
+  it('does not use GLOSSARY.md avoided synonyms in pt-br guides, README.pt-BR.md, or docs/tor-mode.md prose', () => {
     const ptBrFiles = [
       ...EXPECTED_GUIDE_FILES.map((file) => path.join(GUIDES_DIR, 'pt-br', file)),
       path.join(DOCS_DIR, 'tor-mode.md'),
+      path.join(ROOT_DIR, 'README.pt-BR.md'),
     ];
 
     const violations: string[] = [];
