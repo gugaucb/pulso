@@ -17,6 +17,9 @@ export type ControlAsyncEvent =
       severity: string;
       action: string;
       progress?: number;
+      tag?: string;
+      summary?: string;
+      reason?: string;
     }
   | {
       type: 'hs_desc';
@@ -127,6 +130,17 @@ export function parseAddOnionReply(lines: string[]): string {
   throw new Error(`Missing valid v3 ServiceID in ADD_ONION reply: ${lines.join('; ')}`);
 }
 
+function parseControlKvValue(raw: string, key: string): string | undefined {
+  const quotedPattern = new RegExp(`(?:^|\\s)${key}="((?:[^"\\\\]|\\\\.)*)"`);
+  const quotedMatch = quotedPattern.exec(raw);
+  if (quotedMatch) {
+    return quotedMatch[1].replace(/\\(.)/g, '$1');
+  }
+  const unquotedPattern = new RegExp(`(?:^|\\s)${key}=([^\\s]+)`);
+  const unquotedMatch = unquotedPattern.exec(raw);
+  return unquotedMatch?.[1];
+}
+
 /**
  * Parses asynchronous 650 event lines (STATUS_CLIENT and HS_DESC).
  */
@@ -140,7 +154,18 @@ export function parseControlAsyncEvent(lines: string[]): ControlAsyncEvent {
     const action = tokens[2] ?? '';
     const progressMatch = /\bPROGRESS=(\d+)\b/.exec(raw);
     const progress = progressMatch ? Number.parseInt(progressMatch[1], 10) : undefined;
-    return { type: 'status_client', severity, action, progress };
+    const tag = parseControlKvValue(raw, 'TAG');
+    const summary = parseControlKvValue(raw, 'SUMMARY');
+    const reason = parseControlKvValue(raw, 'REASON');
+    return {
+      type: 'status_client',
+      severity,
+      action,
+      progress,
+      ...(tag !== undefined ? { tag } : {}),
+      ...(summary !== undefined ? { summary } : {}),
+      ...(reason !== undefined ? { reason } : {}),
+    };
   }
 
   if (eventType === 'HS_DESC') {
