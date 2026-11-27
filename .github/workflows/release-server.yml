@@ -27,13 +27,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build local smoke-test image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64
@@ -93,7 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve release tag and lowercase owner
         id: prep
@@ -107,13 +107,13 @@ jobs:
           echo "owner_lower=${OWNER_LOWER}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry (GHCR)
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -121,7 +121,7 @@ jobs:
 
       - name: Generate GHCR Docker metadata
         id: meta_ghcr
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ steps.prep.outputs.owner_lower }}/pulso
           tags: |
@@ -131,7 +131,7 @@ jobs:
 
       - name: Build and push multi-arch image to GHCR
         id: push_ghcr
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -142,7 +142,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Attest build provenance (GHCR)
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/${{ steps.prep.outputs.owner_lower }}/pulso
           subject-digest: ${{ steps.push_ghcr.outputs.digest }}
@@ -162,7 +162,7 @@ jobs:
 
       - name: Log in to Docker Hub (optional mirror)
         if: steps.dockerhub_check.outputs.enabled == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN || vars.DOCKERHUB_TOKEN }}
@@ -170,7 +170,7 @@ jobs:
       - name: Generate Docker Hub metadata (optional mirror)
         id: meta_dockerhub
         if: steps.dockerhub_check.outputs.enabled == 'true'
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: docker.io/${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}/pulso
           tags: |
@@ -180,7 +180,7 @@ jobs:
 
       - name: Mirror multi-arch image to Docker Hub (optional)
         if: steps.dockerhub_check.outputs.enabled == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64

@@ -68,7 +68,7 @@ jobs:
             bundles: appimage,deb
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve release version
         id: prep
@@ -84,7 +84,7 @@ jobs:
           echo "tag=v${VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Setup Node.js 22 LTS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
           architecture: ${{ matrix.platform.node_arch }}
@@ -159,7 +159,7 @@ jobs:
           fi
 
       - name: Build Tauri bundles
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -230,7 +230,7 @@ jobs:
             --version "${{ steps.prep.outputs.version }}"
 
       - name: Upload normalized artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pulso-${{ matrix.flavor }}-${{ matrix.platform.slug }}
           path: normalized-artifacts/*
@@ -242,10 +242,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js 22 LTS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -262,7 +262,7 @@ jobs:
           echo "tag=v${VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: release-assets
           pattern: pulso-*
@@ -280,12 +280,12 @@ jobs:
           node scripts/release-artifacts.mjs --verify --dir release-assets
 
       - name: Attest build provenance for desktop artifacts
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: release-assets/pulso-*
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.prep.outputs.tag }}
           name: PULSO ${{ steps.prep.outputs.tag }}

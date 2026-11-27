@@ -485,5 +485,54 @@ describe('scripts/release-artifacts.mjs', () => {
 
       expect(violations).toEqual([]);
     });
+
+    it('uses Node.js 24 native major versions for all GitHub Actions across workflows', () => {
+      const MIN_NODE24_ACTION_MAJORS: Record<string, number> = {
+        'actions/checkout': 5,
+        'actions/setup-node': 5,
+        'actions/upload-artifact': 6,
+        'actions/download-artifact': 7,
+        'actions/attest-build-provenance': 4,
+        'docker/setup-qemu-action': 4,
+        'docker/setup-buildx-action': 4,
+        'docker/login-action': 4,
+        'docker/metadata-action': 6,
+        'docker/build-push-action': 7,
+        'softprops/action-gh-release': 3,
+        'tauri-apps/tauri-action': 1,
+        'swatinem/rust-cache': 2,
+      };
+
+      const workflowFiles = [
+        '.github/workflows/release-server.yml',
+        '.github/workflows/release-desktop.yml',
+      ];
+      const deprecatedPins: string[] = [];
+
+      for (const workflowFile of workflowFiles) {
+        const { parsed } = parseWorkflowYaml(workflowFile);
+        const jobs = (parsed.jobs ?? {}) as Record<
+          string,
+          { steps?: Array<{ name?: string; uses?: unknown }> }
+        >;
+
+        for (const [jobId, job] of Object.entries(jobs)) {
+          for (const [idx, step] of (job.steps ?? []).entries()) {
+            if (typeof step.uses !== 'string') continue;
+            const match = /^([^@]+)@v(\d+)(?:\..+)?$/.exec(step.uses.trim());
+            if (!match) continue;
+            const [, actionName, majorStr] = match;
+            const minMajor = MIN_NODE24_ACTION_MAJORS[actionName];
+            if (minMajor !== undefined && Number.parseInt(majorStr, 10) < minMajor) {
+              deprecatedPins.push(
+                `${workflowFile} job '${jobId}' step[${idx}] (${step.name ?? 'unnamed'}): ${step.uses} (requires >= v${minMajor})`,
+              );
+            }
+          }
+        }
+      }
+
+      expect(deprecatedPins).toEqual([]);
+    });
   });
 });
