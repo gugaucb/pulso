@@ -80,4 +80,39 @@ describe('inviteLink domain utilities', () => {
       onionAddress: `http://${v3Host}`,
     });
   });
+
+  it('uses publicOrigin in normal mode only when tunnelActive is true and falls back to origin otherwise', () => {
+    expect(
+      buildInviteUrl({
+        origin: 'http://127.0.0.1:3001',
+        roomCode: 'A7K9-M2P4',
+        secretKey: 'sec123',
+        mode: 'normal',
+        tunnelActive: true,
+        publicOrigin: 'https://brisk-otter.trycloudflare.com/',
+      }),
+    ).toBe('https://brisk-otter.trycloudflare.com/?room=A7K9-M2P4#k=sec123');
+
+    expect(
+      buildInviteUrl({
+        origin: 'http://127.0.0.1:3001',
+        roomCode: 'A7K9-M2P4',
+        secretKey: 'sec123',
+        mode: 'normal',
+        tunnelActive: false,
+        publicOrigin: 'https://brisk-otter.trycloudflare.com',
+      }),
+    ).toBe('http://127.0.0.1:3001/?room=A7K9-M2P4#k=sec123');
+
+    expect(
+      buildInviteUrl({
+        origin: 'http://127.0.0.1:3001',
+        roomCode: 'A7K9-M2P4',
+        secretKey: 'sec123',
+        mode: 'normal',
+        tunnelActive: true,
+        publicOrigin: 'javascript:alert(1)',
+      }),
+    ).toBe('http://127.0.0.1:3001/?room=A7K9-M2P4#k=sec123');
+  });
 });

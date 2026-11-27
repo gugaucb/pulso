@@ -59,6 +59,7 @@ export const en: TranslationDictionary = {
     mediaPermissionDenied: 'Camera or microphone permission was denied. You can continue exchanging ephemeral messages.',
     mediaUnavailable: 'Camera or microphone is unavailable on this device.',
     mediaConnectionFailed: 'Could not establish the video call. You can continue exchanging ephemeral messages.',
+    mediaConnectionFailedNoTurn: 'The P2P Video Call was blocked by NAT or firewall (no TURN server configured on this Instance). Your text Ephemeral Messages continue working normally.',
     screenShareDenied: 'Screen sharing was cancelled or not authorized.',
   },
   room: {
@@ -189,6 +190,11 @@ export const en: TranslationDictionary = {
     guestReadyStatus: 'Connected in Tor Mode (encrypted text only). Audio and video remain blocked.',
     textOnlyNotice: 'Encrypted text only',
     securityLevelNotice: 'In Tor Browser Safer (on http:// .onion) or Safest security levels, allow JavaScript for this .onion address so client-side E2EE can run.',
+  },
+  tunnel: {
+    badge: (provider) => `${provider} Tunnel`,
+    transparencyNotice: (provider) =>
+      `Active reverse tunnel via ${provider}: this network intermediary can observe network metadata and IP addresses, while Ephemeral Messages remain end-to-end encrypted.`,
   },
   privacy: {
     settingsTitle: 'Privacy & anti-capture',

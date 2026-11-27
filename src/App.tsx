@@ -119,6 +119,7 @@ function AppContent({
           roomCode={session.roomCode}
           roomMode={session.roomMode}
           onionAddress={session.onionAddress}
+          runtimeInfo={runtimeInfo}
           inviteUrl={session.inviteUrl ?? session.roomCode}
           connectionStatus={session.status}
           roomErrorCode={session.errorCode}

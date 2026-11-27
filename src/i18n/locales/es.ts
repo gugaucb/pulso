@@ -59,6 +59,7 @@ export const es: TranslationDictionary = {
     mediaPermissionDenied: 'Permiso de cámara o micrófono denegado. Puedes seguir enviando mensajes efímeros.',
     mediaUnavailable: 'La cámara o el micrófono no están disponibles en este dispositivo.',
     mediaConnectionFailed: 'No se pudo establecer la videollamada. Puedes seguir enviando mensajes efímeros.',
+    mediaConnectionFailedNoTurn: 'La Videollamada P2P fue bloqueada por NAT o firewall (sin servidor TURN configurado en esta Instancia). Tus Mensajes Efímeros de texto siguen funcionando normalmente.',
     screenShareDenied: 'Pantalla compartida cancelada o no autorizada.',
   },
   room: {
@@ -189,6 +190,11 @@ export const es: TranslationDictionary = {
     guestReadyStatus: 'Conectado en Modo Tor (solo texto cifrado). Audio y vídeo permanecen bloqueados.',
     textOnlyNotice: 'Solo texto cifrado',
     securityLevelNotice: 'En los niveles Safer (sobre .onion HTTP) o Safest de Tor Browser, permite JavaScript para esta dirección .onion para ejecutar el cifrado de extremo a extremo.',
+  },
+  tunnel: {
+    badge: (provider) => `Túnel ${provider}`,
+    transparencyNotice: (provider) =>
+      `Túnel inverso activo vía ${provider}: este intermediario de red puede observar metadatos y direcciones IP, mientras que los Mensajes Efímeros siguen cifrados de extremo a extremo.`,
   },
   privacy: {
     settingsTitle: 'Privacidad y anticaptura',
