@@ -89,6 +89,30 @@ export async function fetchLatestReleaseManifest(
   };
 }
 
+function subscribeTauriEvent<T>(eventName: string, listener: (payload: T) => void): () => void {
+  const { event } = getTauriApis();
+  if (!event?.listen) return () => {};
+  let disposed = false;
+  let unlistenFn: (() => void) | undefined;
+  void event
+    .listen<T>(eventName, (msg) => {
+      if (!disposed && msg?.payload) {
+        listener(msg.payload);
+      }
+    })
+    .then((unlisten) => {
+      if (disposed) {
+        unlisten();
+      } else {
+        unlistenFn = unlisten;
+      }
+    });
+  return () => {
+    disposed = true;
+    unlistenFn?.();
+  };
+}
+
 export function createTauriDesktopBridge(): DesktopBridge {
   let cachedFlavorInfo: DesktopFlavorInfo | null = null;
 
@@ -132,51 +156,9 @@ export function createTauriDesktopBridge(): DesktopBridge {
       }
       return fetchLatestReleaseManifest(info.appVersion);
     },
-    subscribeSidecarEvents: (listener) => {
-      const { event } = getTauriApis();
-      if (!event?.listen) return () => {};
-      let disposed = false;
-      let unlistenFn: (() => void) | undefined;
-      void event
-        .listen<SidecarEvent>('pulso://sidecar-event', (msg) => {
-          if (!disposed && msg?.payload) {
-            listener(msg.payload);
-          }
-        })
-        .then((unlisten) => {
-          if (disposed) {
-            unlisten();
-          } else {
-            unlistenFn = unlisten;
-          }
-        });
-      return () => {
-        disposed = true;
-        unlistenFn?.();
-      };
-    },
-    subscribeLifecycleEvents: (listener) => {
-      const { event } = getTauriApis();
-      if (!event?.listen) return () => {};
-      let disposed = false;
-      let unlistenFn: (() => void) | undefined;
-      void event
-        .listen<DesktopLifecycleEvent>('pulso://lifecycle-event', (msg) => {
-          if (!disposed && msg?.payload) {
-            listener(msg.payload);
-          }
-        })
-        .then((unlisten) => {
-          if (disposed) {
-            unlisten();
-          } else {
-            unlistenFn = unlisten;
-          }
-        });
-      return () => {
-        disposed = true;
-        unlistenFn?.();
-      };
-    },
+    subscribeSidecarEvents: (listener) =>
+      subscribeTauriEvent<SidecarEvent>('pulso://sidecar-event', listener),
+    subscribeLifecycleEvents: (listener) =>
+      subscribeTauriEvent<DesktopLifecycleEvent>('pulso://lifecycle-event', listener),
   };
 }

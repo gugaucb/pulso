@@ -4,7 +4,7 @@
 
 Esta guía ayuda al **Operador** a desplegar y mantener una **Instancia** autoalojada de **PULSO Servidor** (**Modo Normal**) en un VPS o mediante plantillas PaaS en 1 clic.
 
-La imagen oficial `ghcr.io/<org>/pulso` (multiarquitectura `linux/amd64` y `linux/arm64`) usa `gcr.io/distroless/nodejs22-debian12:nonroot` (UID `65532`), sistema de archivos de solo lectura (`read_only: true`), `cap_drop: [ALL]` y comprobación nativa en `GET /healthz`.
+La imagen oficial `ghcr.io/pulso-app/pulso` (multiarquitectura `linux/amd64` y `linux/arm64`) usa `gcr.io/distroless/nodejs22-debian12:nonroot` (UID `65532`), sistema de archivos de solo lectura (`read_only: true`), `cap_drop: [ALL]` y comprobación nativa en `GET /healthz`.
 
 ---
 

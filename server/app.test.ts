@@ -243,6 +243,7 @@ describe('Fastify app in-process seam (inject + injectWS)', () => {
     expect(resolveTrustProxy({ TRUST_PROXY: 'true' })).toBe(true);
     expect(resolveTrustProxy({ TRUST_PROXY: ' TRUE ' })).toBe(true);
     expect(resolveTrustProxy({ TRUST_PROXY: '1' })).toBe(true);
+    expect(resolveTrustProxy({ TRUST_PROXY: '2' })).toBe(2);
 
     // Loopback + tunnelActive=true reads cf-connecting-ip or first hop of x-forwarded-for
     for (const loopback of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) {
@@ -379,6 +380,68 @@ describe('Fastify app in-process seam (inject + injectWS)', () => {
     });
     cleanups.push(() => proxiedGuestWs.close());
     expect(proxiedGuestWs.readyState).toBe(1);
+  });
+
+  it('supports numeric trustProxy hop-count (e.g. trustProxy: 1 and TRUST_PROXY=2) without failing closed', async () => {
+    // 1-hop trust uses the immediate client before the proxy and ignores spoofed left-most hops
+    const oneHopApp = await createServer({
+      trustProxy: 1,
+      securityOptions: { wsConnectMax: 1 },
+    });
+    await oneHopApp.ready();
+    cleanups.push(() => oneHopApp.close());
+
+    const ws1 = await oneHopApp.injectWS('/ws', {
+      socket: { remoteAddress: '10.0.0.2' },
+      headers: { 'x-forwarded-for': '192.0.2.99, 203.0.113.50' },
+    });
+    cleanups.push(() => ws1.close());
+    expect(ws1.readyState).toBe(1);
+
+    // Same immediate client IP (203.0.113.50) with different spoofed left-most IP must hit rate-limit
+    await expect(
+      oneHopApp.injectWS('/ws', {
+        socket: { remoteAddress: '10.0.0.2' },
+        headers: { 'x-forwarded-for': '192.0.2.100, 203.0.113.50' },
+      }),
+    ).rejects.toThrow(/429/);
+
+    // Different immediate client IP behind 1 proxy hop succeeds
+    const ws2 = await oneHopApp.injectWS('/ws', {
+      socket: { remoteAddress: '10.0.0.2' },
+      headers: { 'x-forwarded-for': '198.51.100.60' },
+    });
+    cleanups.push(() => ws2.close());
+    expect(ws2.readyState).toBe(1);
+
+    // 2-hop trust (via resolveTrustProxy({ TRUST_PROXY: '2' })) resolves 2 hops back
+    const twoHopApp = await createServer({
+      trustProxy: resolveTrustProxy({ TRUST_PROXY: '2' }),
+      securityOptions: { wsConnectMax: 1 },
+    });
+    await twoHopApp.ready();
+    cleanups.push(() => twoHopApp.close());
+
+    const twoHopWs1 = await twoHopApp.injectWS('/ws', {
+      socket: { remoteAddress: '10.0.0.2' },
+      headers: { 'x-forwarded-for': '198.51.100.70, 10.0.0.3' },
+    });
+    cleanups.push(() => twoHopWs1.close());
+    expect(twoHopWs1.readyState).toBe(1);
+
+    await expect(
+      twoHopApp.injectWS('/ws', {
+        socket: { remoteAddress: '10.0.0.2' },
+        headers: { 'x-forwarded-for': '198.51.100.70, 10.0.0.4' },
+      }),
+    ).rejects.toThrow(/429/);
+
+    const twoHopWs2 = await twoHopApp.injectWS('/ws', {
+      socket: { remoteAddress: '10.0.0.2' },
+      headers: { 'x-forwarded-for': '198.51.100.71, 10.0.0.3' },
+    });
+    cleanups.push(() => twoHopWs2.close());
+    expect(twoHopWs2.readyState).toBe(1);
   });
 
   it('sends WebSocket protocol ping frames on heartbeat interval (default 35_000ms, unrefed, cleaned up) without altering room expiresAt or emitting activity_reset', async () => {

@@ -1,11 +1,12 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { accessSync, chmodSync, constants, mkdtempSync, readdirSync, statSync } from 'node:fs';
+import { chmodSync, mkdtempSync } from 'node:fs';
 import { lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import type { Duplex } from 'node:stream';
+import { ensureDarwinBinarySigned, isExecutableFile } from '../binaryUtils';
 import {
   ControlPortClient,
   parseControlPortFile,
@@ -108,19 +109,7 @@ export interface TorControllerOptions {
   execFileSyncFn?: typeof execFileSync;
 }
 
-function isExecutableFile(filePath: string, platform: NodeJS.Platform): boolean {
-  try {
-    const stat = statSync(filePath);
-    if (!stat.isFile()) {
-      return false;
-    }
-    const mode = platform === 'win32' ? constants.F_OK : constants.X_OK;
-    accessSync(filePath, mode);
-    return true;
-  } catch {
-    return false;
-  }
-}
+export { ensureDarwinBinarySigned };
 
 function missingTorBinaryError(reason: string): Error {
   return new Error(
@@ -311,39 +300,6 @@ export function sanitizeCustomBridgeLines(input: string | readonly string[]): st
   }
 
   return sanitized;
-}
-
-/**
- * Ensures Mach-O executables on macOS (especially Apple Silicon arm64) carry a valid code signature.
- * Unsigned arm64 binaries are terminated by the macOS kernel with SIGKILL (code 137).
- */
-export function ensureDarwinBinarySigned(
-  binaryPath: string,
-  platform: NodeJS.Platform = process.platform,
-  execFileImpl: typeof execFileSync = execFileSync,
-): void {
-  if (platform !== 'darwin') return;
-  try {
-    execFileImpl('codesign', ['-v', binaryPath], { stdio: 'ignore' });
-  } catch {
-    try {
-      const binDir = path.dirname(binaryPath);
-      try {
-        for (const entry of readdirSync(binDir)) {
-          if (!entry.endsWith('.dylib')) continue;
-          const candidate = path.join(binDir, entry);
-          if (statSync(candidate).isFile()) {
-            execFileImpl('codesign', ['-s', '-', '--force', candidate], { stdio: 'ignore' });
-          }
-        }
-      } catch {
-        // sibling dylibs are optional
-      }
-      execFileImpl('codesign', ['-s', '-', '--force', binaryPath], { stdio: 'ignore' });
-    } catch {
-      // If codesign fails or is unavailable, let execution proceed to spawn
-    }
-  }
 }
 
 function formatTorrcPath(filePath: string): string {

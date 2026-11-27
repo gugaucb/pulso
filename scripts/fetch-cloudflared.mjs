@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { chmodSync, createReadStream, existsSync, realpathSync } from 'node:fs';
+import { chmodSync, existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { computeFileSha256, isDirectExecution } from './lib/cli-utils.mjs';
+
+export { computeFileSha256 };
 
 export const DEFAULT_CLOUDFLARED_VERSION =
   process.env.PULSO_CLOUDFLARED_VERSION?.trim() || '2025.11.1';
@@ -85,17 +86,6 @@ export function buildCloudflaredUrls(version, target) {
     licenseUrl: `https://raw.githubusercontent.com/cloudflare/cloudflared/${ref}/LICENSE`,
     noticeUrl: `https://raw.githubusercontent.com/cloudflare/cloudflared/${ref}/NOTICE`,
   };
-}
-
-export async function computeFileSha256(filePath) {
-  const hash = createHash('sha256');
-  await new Promise((resolve, reject) => {
-    const stream = createReadStream(filePath);
-    stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('error', reject);
-    stream.on('end', resolve);
-  });
-  return hash.digest('hex').toLowerCase();
 }
 
 export async function verifyLocalFileSha256(filePath, expectedSha256 = null) {
@@ -345,18 +335,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
 }
 
-export function isDirectExecution() {
-  if (process.env.VITEST) return false;
-  const entry = process.argv[1];
-  if (!entry) return false;
-  try {
-    return fileURLToPath(import.meta.url) === realpathSync(entry);
-  } catch {
-    return fileURLToPath(import.meta.url) === path.resolve(entry);
-  }
-}
-
-if (isDirectExecution()) {
+if (isDirectExecution(import.meta.url)) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

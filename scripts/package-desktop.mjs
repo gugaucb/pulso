@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
 import { cp, mkdir, rm } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { resolveRustTargetTriple, sidecarBinaryName } from './build-sidecar.mjs';
+import { isDirectExecution } from './lib/cli-utils.mjs';
 
 const TRIPLE_TO_ARTIFACT_SLUG = new Map([
   ['aarch64-apple-darwin', 'macos-arm64'],
@@ -36,6 +37,8 @@ export function parseArgs(argv) {
     cloudflaredSourceDir: path.resolve(process.cwd(), '.cloudflared-bin'),
     tauriDir: path.resolve(process.cwd(), 'src-tauri'),
     appPath: null,
+    createDmgAppPath: null,
+    outDmgPath: null,
     portableSourceDir: null,
     outZipPath: null,
   };
@@ -64,6 +67,10 @@ export function parseArgs(argv) {
       opts.tauriDir = path.resolve(process.cwd(), argv[++i]);
     } else if (arg === '--verify-app' && argv[i + 1]) {
       opts.appPath = path.resolve(process.cwd(), argv[++i]);
+    } else if (arg === '--create-dmg' && argv[i + 1]) {
+      opts.createDmgAppPath = path.resolve(process.cwd(), argv[++i]);
+    } else if (arg === '--out-dmg' && argv[i + 1]) {
+      opts.outDmgPath = path.resolve(process.cwd(), argv[++i]);
     } else if (arg === '--portable-dir' && argv[i + 1]) {
       opts.portableSourceDir = path.resolve(process.cwd(), argv[++i]);
     } else if (arg === '--out-zip' && argv[i + 1]) {
@@ -90,6 +97,8 @@ Options:
   --cloudflared-dir <dir>     Source cloudflared dir (default: .cloudflared-bin)
   --tauri-dir <dir>           Tauri project root (default: src-tauri)
   --verify-app <path.app>     Verify & ad-hoc sign an existing macOS .app bundle
+  --create-dmg <path.app>     Package an already-signed macOS .app bundle into a .dmg
+  --out-dmg <file.dmg>        Output path for macOS .dmg
   --portable-dir <dir>        Source directory to archive into a portable .zip
   --out-zip <file.zip>        Output path for portable .zip
   --dry-run                   Print packaging plan without modifying files
@@ -231,6 +240,46 @@ export function verifyMacOsAdHocSignatures({
 }
 
 /**
+ * Packages an already-signed macOS `.app` bundle into a compressed `.dmg` via `hdiutil create`.
+ */
+export async function createMacOsDmg({
+  appPath,
+  outDmgPath,
+  volumeName,
+  execFileSyncFn = execFileSync,
+} = {}) {
+  if (!appPath || !existsSync(appPath)) {
+    throw new Error(`macOS .app bundle not found at ${appPath}`);
+  }
+  const resolvedVolumeName = volumeName || path.basename(appPath, '.app') || 'PULSO';
+  const stageDir = mkdtempSync(path.join(os.tmpdir(), 'pulso-dmg-stage-'));
+  try {
+    const stagedAppPath = path.join(stageDir, path.basename(appPath));
+    execFileSyncFn('ditto', [appPath, stagedAppPath], { stdio: 'inherit' });
+    await mkdir(path.dirname(outDmgPath), { recursive: true });
+    await rm(outDmgPath, { force: true });
+    execFileSyncFn(
+      'hdiutil',
+      [
+        'create',
+        '-volname',
+        resolvedVolumeName,
+        '-srcfolder',
+        stageDir,
+        '-ov',
+        '-format',
+        'UDZO',
+        outDmgPath,
+      ],
+      { stdio: 'inherit' },
+    );
+    return outDmgPath;
+  } finally {
+    await rm(stageDir, { recursive: true, force: true });
+  }
+}
+
+/**
  * Creates a portable `.zip` package (used for Windows x64 portable builds or offline archives).
  */
 export async function createPortableZip({
@@ -276,6 +325,31 @@ export async function main(argv = process.argv.slice(2)) {
   if (opts.appPath) {
     verifyMacOsAdHocSignatures({ appPath: opts.appPath, flavor: opts.flavor });
     console.log(`Verified macOS ad-hoc signature for ${opts.appPath}`);
+    if (!opts.createDmgAppPath) {
+      return;
+    }
+  }
+
+  if (opts.createDmgAppPath) {
+    const outDmgPath =
+      opts.outDmgPath ??
+      path.resolve(
+        process.cwd(),
+        'dist-packages',
+        formatReleaseArtifactName({
+          flavor: opts.flavor,
+          version: opts.version,
+          targetTriple,
+          ext: 'dmg',
+        }),
+      );
+    const volumeName = opts.flavor === 'tor' ? 'PULSO Tor' : 'PULSO Local';
+    await createMacOsDmg({
+      appPath: opts.createDmgAppPath,
+      outDmgPath,
+      volumeName,
+    });
+    console.log(`macOS .dmg package created at ${outDmgPath}`);
     return;
   }
 
@@ -307,18 +381,7 @@ export async function main(argv = process.argv.slice(2)) {
   console.log(`Staged ${opts.flavor} resources for ${targetTriple}`);
 }
 
-export function isDirectExecution() {
-  if (process.env.VITEST) return false;
-  const entry = process.argv[1];
-  if (!entry) return false;
-  try {
-    return fileURLToPath(import.meta.url) === realpathSync(entry);
-  } catch {
-    return fileURLToPath(import.meta.url) === path.resolve(entry);
-  }
-}
-
-if (isDirectExecution()) {
+if (isDirectExecution(import.meta.url)) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

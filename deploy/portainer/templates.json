@@ -9,7 +9,7 @@
       "categories": ["Communication", "Privacy"],
       "platform": "linux",
       "repository": {
-        "url": "https://github.com/pulso/pulso",
+        "url": "https://github.com/pulso-app/pulso",
         "stackfile": "deploy/portainer/docker-compose.yml"
       },
       "env": [

@@ -1,8 +1,7 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { accessSync, constants, statSync } from 'node:fs';
 import path from 'node:path';
-import { ensureDarwinBinarySigned } from '../tor/torController';
+import { ensureDarwinBinarySigned, isExecutableFile } from '../binaryUtils';
 import type {
   TunnelAdapter,
   TunnelExitInfo,
@@ -35,20 +34,6 @@ export interface CloudflaredAdapterOptions {
   stopTimeoutMs?: number;
   spawnFn?: typeof spawn;
   execFileSyncFn?: typeof execFileSync;
-}
-
-function isExecutableFile(filePath: string, platform: NodeJS.Platform): boolean {
-  try {
-    const stat = statSync(filePath);
-    if (!stat.isFile()) {
-      return false;
-    }
-    const mode = platform === 'win32' ? constants.F_OK : constants.X_OK;
-    accessSync(filePath, mode);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function missingCloudflaredBinaryError(reason: string, binaryName: string): Error {
@@ -218,7 +203,7 @@ export class CloudflaredAdapter extends EventEmitter implements TunnelAdapter {
       ensureDarwinBinarySigned(binaryPath, platform, execFileImpl);
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      this.failBeforeReady(error);
+      this.transitionToError(error);
       throw error;
     }
 
@@ -249,7 +234,7 @@ export class CloudflaredAdapter extends EventEmitter implements TunnelAdapter {
         if (settled) return;
         settled = true;
         cleanupListeners();
-        this.failBeforeReady(error);
+        this.transitionToError(error);
         void this.terminateChildProcess().finally(() => {
           reject(error);
         });
@@ -290,7 +275,7 @@ export class CloudflaredAdapter extends EventEmitter implements TunnelAdapter {
         if (!settled) {
           fail(new Error(`Failed to start cloudflared: ${error.message}`));
         } else {
-          this.handlePostReadyFailure(error);
+          this.transitionToError(error);
         }
       });
 
@@ -326,7 +311,7 @@ export class CloudflaredAdapter extends EventEmitter implements TunnelAdapter {
             `cloudflared exited unexpectedly (code=${String(code)}, signal=${String(signal)})`,
           );
           this.emit('exit', exitInfo);
-          this.handlePostReadyFailure(error);
+          this.transitionToError(error);
         }
       });
 
@@ -340,18 +325,7 @@ export class CloudflaredAdapter extends EventEmitter implements TunnelAdapter {
     });
   }
 
-  private failBeforeReady(error: Error): void {
-    this.status = 'error';
-    this.publicOrigin = undefined;
-    this.currentError = error;
-    this.startPromise = undefined;
-    this.emitStatus();
-    if (this.listenerCount('error') > 0) {
-      this.emit('error', error);
-    }
-  }
-
-  private handlePostReadyFailure(error: Error): void {
+  private transitionToError(error: Error): void {
     this.status = 'error';
     this.publicOrigin = undefined;
     this.currentError = error;

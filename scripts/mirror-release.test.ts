@@ -28,7 +28,7 @@ describe('scripts/mirror-release.mjs', () => {
     }
   });
 
-  it('filters release assets to mirror only PULSO Tor packages plus SHA256SUMS and SHA256SUMS.asc', () => {
+  it('filters release assets to mirror only PULSO Tor packages plus SHA256SUMS, SHA256SUMS.asc, and pulso-release-key.asc', () => {
     const selected = selectTorMirrorFiles([
       'pulso-local-v0.1.0-macos-arm64.dmg',
       'pulso-local-v0.1.0-windows-x64.exe',
@@ -37,6 +37,7 @@ describe('scripts/mirror-release.mjs', () => {
       'pulso-tor-v0.1.0-windows-x64.zip',
       'SHA256SUMS',
       'SHA256SUMS.asc',
+      'pulso-release-key.asc',
       'release-manifest.json',
       '.DS_Store',
     ]);
@@ -44,6 +45,7 @@ describe('scripts/mirror-release.mjs', () => {
     expect(selected).toEqual([
       'SHA256SUMS',
       'SHA256SUMS.asc',
+      'pulso-release-key.asc',
       'pulso-tor-v0.1.0-linux-x64.AppImage',
       'pulso-tor-v0.1.0-macos-arm64.dmg',
       'pulso-tor-v0.1.0-windows-x64.zip',

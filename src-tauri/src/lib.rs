@@ -14,7 +14,8 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::flavor::{current_flavor, Flavor};
 use crate::process_tree::{
-    cleanup_stale_tor_dirs_in, create_ephemeral_tor_dir, purge_tor_temp_dir, ManagedProcess,
+    cleanup_stale_tor_dirs_in, create_ephemeral_tor_dir, ensure_tor_temp_dir_purged,
+    ManagedProcess,
 };
 use crate::sidecar_protocol::{
     build_local_spawn_plan, build_tor_spawn_plan, is_allowed_browser_url,
@@ -160,10 +161,8 @@ fn stop_active_instance(state: &AppState) -> StopPurgeResponse {
     if let Some(mut proc_handle) = guard.process.take() {
         proc_handle.terminate_tree(Duration::from_secs(3));
     }
-    let purged_data_dir = match guard.tor_data_dir.take() {
-        Some(dir) => purge_tor_temp_dir(&dir).unwrap_or(false),
-        None => false,
-    };
+    let tor_data_dir = guard.tor_data_dir.take();
+    let purged_data_dir = ensure_tor_temp_dir_purged(tor_data_dir.as_deref());
     guard.local_url = None;
     guard.active = false;
     guard.auto_opened = false;
@@ -425,4 +424,26 @@ pub fn run() {
             let _ = stop_active_instance(&state);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stop_active_instance_reports_purged_even_when_sidecar_already_deleted_temp_dir() {
+        let state = AppState::default();
+        let tor_dir = create_ephemeral_tor_dir().unwrap();
+        std::fs::remove_dir_all(&tor_dir).unwrap();
+
+        {
+            let mut guard = state.inner.lock().unwrap();
+            guard.tor_data_dir = Some(tor_dir);
+            guard.active = true;
+        }
+
+        let response = stop_active_instance(&state);
+        assert!(response.purged_data_dir);
+        assert!(!state.inner.lock().unwrap().active);
+    }
 }

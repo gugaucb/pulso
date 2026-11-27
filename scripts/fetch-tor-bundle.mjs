@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { createReadStream, existsSync, mkdtempSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { computeFileSha256, isDirectExecution } from './lib/cli-utils.mjs';
+
+export { computeFileSha256 };
 
 export const DEFAULT_TOR_BROWSER_VERSION =
   process.env.PULSO_TOR_BUNDLE_VERSION?.trim() || '16.0';
@@ -33,17 +34,6 @@ export function buildBundleUrls(version, target) {
     checksumsAscUrl: `${base}/sha256sums-signed-build.txt.asc`,
     ascUrl: `${base}/${filename}.asc`,
   };
-}
-
-export async function computeFileSha256(filePath) {
-  const hash = createHash('sha256');
-  await new Promise((resolve, reject) => {
-    const stream = createReadStream(filePath);
-    stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('error', reject);
-    stream.on('end', resolve);
-  });
-  return hash.digest('hex').toLowerCase();
 }
 
 export function parseSha256FromChecksums(checksumsText, filename) {
@@ -419,18 +409,7 @@ export async function main() {
   }
 }
 
-function isDirectExecution() {
-  if (process.env.VITEST) return false;
-  const entry = process.argv[1];
-  if (!entry) return false;
-  try {
-    return fileURLToPath(import.meta.url) === realpathSync(entry);
-  } catch {
-    return fileURLToPath(import.meta.url) === path.resolve(entry);
-  }
-}
-
-if (isDirectExecution()) {
+if (isDirectExecution(import.meta.url)) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

@@ -1,3 +1,4 @@
+import { sanitizeHttpOrigin } from '../../shared/protocol';
 import { normalizeOnionAddress } from './onionAddress';
 import { formatRoomCode, isValidRoomCode } from './roomCode';
 import type { RoomMode } from './types';
@@ -19,24 +20,6 @@ export interface ParsedInviteUrl {
   onionAddress?: string;
 }
 
-function sanitizeHttpOrigin(value?: string): string | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  try {
-    const parsed = new URL(trimmed);
-    if (
-      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
-      parsed.origin !== 'null'
-    ) {
-      return parsed.origin;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
 /**
  * Builds an invite URL keeping any cryptographic secret solely inside the URL hash fragment.
  */
@@ -50,7 +33,7 @@ export function buildInviteUrl({
   tunnelActive = false,
 }: BuildInviteUrlParams): string {
   const resolvedPublicOrigin =
-    mode === 'normal' && tunnelActive ? sanitizeHttpOrigin(publicOrigin) : null;
+    mode === 'normal' && tunnelActive ? sanitizeHttpOrigin(publicOrigin) : undefined;
   const baseOrigin =
     mode === 'tor' && onionAddress
       ? onionAddress.replace(/\/+$/, '')

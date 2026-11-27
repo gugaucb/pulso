@@ -9,7 +9,7 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
-    image: ${PULSO_IMAGE:-ghcr.io/pulso/pulso:latest}
+    image: ${PULSO_IMAGE:-ghcr.io/pulso-app/pulso:latest}
     restart: unless-stopped
     read_only: true
     tmpfs:

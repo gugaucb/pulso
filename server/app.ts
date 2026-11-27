@@ -24,7 +24,8 @@ const OPEN_READY_STATE = 1;
 const WS_HARD_MAX_PAYLOAD_MULTIPLIER = 4;
 export const DEFAULT_WS_HEARTBEAT_INTERVAL_MS = 35_000;
 
-export type TrustProxyOption = boolean | string | string[] | number;
+export type TrustProxyFunction = (address: string, hop: number) => boolean;
+export type TrustProxyOption = boolean | string | string[] | number | TrustProxyFunction;
 
 export interface CreateServerOptions {
   clock?: Clock;
@@ -45,11 +46,34 @@ export interface CreateServerOptions {
 }
 
 /**
- * Resolves Fastify `trustProxy` setting from `TRUST_PROXY` (`true` or `1`).
+ * Resolves Fastify `trustProxy` setting from `TRUST_PROXY` (`true`, `1`, or positive hop count).
  */
-export function resolveTrustProxy(env: NodeJS.ProcessEnv = process.env): boolean {
+export function resolveTrustProxy(env: NodeJS.ProcessEnv = process.env): boolean | number {
   const raw = env.TRUST_PROXY?.trim().toLowerCase();
-  return raw === 'true' || raw === '1';
+  if (!raw || raw === 'false' || raw === '0') {
+    return false;
+  }
+  if (raw === 'true' || raw === '1') {
+    return true;
+  }
+  if (/^\d+$/.test(raw)) {
+    const hops = Number.parseInt(raw, 10);
+    return hops > 0 ? hops : false;
+  }
+  return false;
+}
+
+function toFastifyTrustProxy(
+  trustProxy: TrustProxyOption,
+): boolean | string | string[] | TrustProxyFunction {
+  if (typeof trustProxy === 'number') {
+    if (!Number.isFinite(trustProxy) || trustProxy <= 0) {
+      return false;
+    }
+    const maxHops = Math.floor(trustProxy);
+    return (_address: string, hop: number) => hop < maxHops;
+  }
+  return trustProxy;
 }
 
 export interface ResolveStaticDirOptions {
@@ -257,7 +281,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
   const app = Fastify({
     logger: false,
     logController: new LogController({ disableRequestLogging: true }),
-    trustProxy: typeof trustProxy === 'number' ? false : trustProxy,
+    trustProxy: toFastifyTrustProxy(trustProxy),
   });
 
   app.addHook('onClose', async () => {
