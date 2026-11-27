@@ -50,6 +50,7 @@ export interface TranslationDictionary {
     mediaPermissionDenied: string;
     mediaUnavailable: string;
     mediaConnectionFailed: string;
+    mediaConnectionFailedNoTurn: string;
     screenShareDenied: string;
   };
   room: {
@@ -180,6 +181,10 @@ export interface TranslationDictionary {
     guestReadyStatus: string;
     textOnlyNotice: string;
     securityLevelNotice: string;
+  };
+  tunnel: {
+    badge: (provider: string) => string;
+    transparencyNotice: (provider: string) => string;
   };
   privacy: {
     settingsTitle: string;

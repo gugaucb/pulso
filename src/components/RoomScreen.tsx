@@ -6,6 +6,7 @@ import type {
   Participant,
   RoomErrorCode,
   RoomMode,
+  RuntimeInfo,
 } from '../domain/types';
 import { useCopyFeedback } from '../hooks/useCopyFeedback';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -32,6 +33,7 @@ interface RoomScreenProps {
   roomCode: string;
   roomMode?: RoomMode;
   onionAddress?: string | null;
+  runtimeInfo?: RuntimeInfo;
   inviteUrl: string;
   connectionStatus?: ConnectionStatus;
   roomErrorCode?: RoomErrorCode | null;
@@ -58,6 +60,7 @@ export function RoomScreen({
   roomCode,
   roomMode = 'normal',
   onionAddress,
+  runtimeInfo,
   inviteUrl,
   connectionStatus,
   roomErrorCode,
@@ -81,6 +84,11 @@ export function RoomScreen({
 }: RoomScreenProps) {
   const { t } = useI18n();
   const isTorMode = roomMode === 'tor';
+  const isTunnelActive = !isTorMode && runtimeInfo?.tunnelActive === true;
+  const tunnelProviderLabel =
+    runtimeInfo?.tunnelProvider === 'cloudflare' || !runtimeInfo?.tunnelProvider
+      ? 'Cloudflare'
+      : runtimeInfo.tunnelProvider;
   const codeCopy = useCopyFeedback();
   const linkCopy = useCopyFeedback();
   const onionCopy = useCopyFeedback();
@@ -120,10 +128,17 @@ export function RoomScreen({
   const remoteParticipant = participants.find((p) => p.id !== localParticipant.id);
   const remoteName = remoteParticipant?.displayName ?? t.defaultGuestName;
 
+  const isNatBlockedWithoutTurn =
+    !isTorMode &&
+    videoCall?.error === 'connection_failed' &&
+    runtimeInfo?.turnConfigured === false;
+
   const mediaErrorMessages: Record<MediaErrorCode, string> = {
     permission_denied: t.errors.mediaPermissionDenied,
     media_unavailable: t.errors.mediaUnavailable,
-    connection_failed: t.errors.mediaConnectionFailed,
+    connection_failed: isNatBlockedWithoutTurn
+      ? t.errors.mediaConnectionFailedNoTurn
+      : t.errors.mediaConnectionFailed,
     screen_share_denied: t.errors.screenShareDenied,
   };
 
@@ -206,6 +221,8 @@ export function RoomScreen({
         <RoomHeader
           roomCode={roomCode}
           roomMode={roomMode}
+          tunnelActive={isTunnelActive}
+          tunnelProvider={runtimeInfo?.tunnelProvider}
           connectionStatus={connectionStatus}
           participants={participants}
           copiedCode={codeCopy.copied}
@@ -224,6 +241,17 @@ export function RoomScreen({
           onToggleMobileSidebar={() => setMobileSidebarOpen((prev) => !prev)}
           mobileSidebarButtonRef={mobileSidebarButtonRef}
         />
+
+        {isTunnelActive && (
+          <div
+            role="note"
+            data-tunnel-transparency-notice="true"
+            className="pulso-print-hide mx-4 sm:mx-5 mt-2.5 flex items-start gap-2 rounded-xl border border-sky-200/90 dark:border-sky-500/30 bg-sky-50/80 dark:bg-sky-500/10 px-4 py-2 text-xs text-sky-950 dark:text-sky-100"
+          >
+            <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-sky-600 dark:text-sky-300" aria-hidden="true" />
+            <span>{t.tunnel.transparencyNotice(tunnelProviderLabel)}</span>
+          </div>
+        )}
 
         {connectionStatus === 'reconnecting' && (
           <div
@@ -315,6 +343,8 @@ export function RoomScreen({
         {!isTorMode && videoCall?.error && (
           <div
             role="alert"
+            data-media-error={videoCall.error}
+            data-nat-no-turn={isNatBlockedWithoutTurn ? 'true' : undefined}
             className="mx-4 sm:mx-5 mt-3 flex items-center justify-between gap-3 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/15 px-4 py-2.5 text-xs font-medium text-amber-900 dark:text-amber-200"
           >
             <div className="flex items-center gap-2 min-w-0">

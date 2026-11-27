@@ -59,6 +59,7 @@ export const zhCN: TranslationDictionary = {
     mediaPermissionDenied: '摄像头或麦克风权限被拒绝，您仍可继续发送阅后即焚消息。',
     mediaUnavailable: '此设备上无法使用摄像头或麦克风。',
     mediaConnectionFailed: '无法建立视频通话连接，您仍可继续发送阅后即焚消息。',
+    mediaConnectionFailedNoTurn: 'P2P 视频通话被 NAT 或防火墙阻止（当前实例未配置 TURN 服务器）。您的文本阅后即焚消息仍可正常使用。',
     screenShareDenied: '屏幕共享已取消或未获授权。',
   },
   room: {
@@ -189,6 +190,11 @@ export const zhCN: TranslationDictionary = {
     guestReadyStatus: '已进入 Tor 模式（仅限加密文本），音视频已严格禁用。',
     textOnlyNotice: '仅限加密文本',
     securityLevelNotice: '在 Tor Browser 的 Safer（.onion HTTP）或 Safest 安全级别下，请为此 .onion 地址允许 JavaScript 以运行端到端加密。',
+  },
+  tunnel: {
+    badge: (provider) => `${provider} 隧道`,
+    transparencyNotice: (provider) =>
+      `已通过 ${provider} 启用反向隧道：该网络中介可观察网络元数据和 IP 地址，但阅后即焚消息仍保持端到端加密。`,
   },
   privacy: {
     settingsTitle: '隐私与防截屏',

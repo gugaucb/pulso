@@ -147,6 +147,8 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
   const participantsRef = useRef<Map<string, string>>(new Map());
   const defaultDisplayNameRef = useRef(options.defaultDisplayName ?? DEFAULT_DISPLAY_NAME);
   defaultDisplayNameRef.current = options.defaultDisplayName ?? DEFAULT_DISPLAY_NAME;
+  const runtimeInfoRef = useRef<RuntimeInfo | undefined>(options.runtimeInfo);
+  runtimeInfoRef.current = options.runtimeInfo;
   const localPubJwkRef = useRef<JsonWebKey | null>(null);
   const peerPresentRef = useRef(false);
   const sentLocalKeyRef = useRef(false);
@@ -384,6 +386,8 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
               secretKey: secretKeyRef.current,
               mode: effectiveMode,
               onionAddress: effectiveOnion ?? undefined,
+              publicOrigin: runtimeInfoRef.current?.publicOrigin,
+              tunnelActive: runtimeInfoRef.current?.tunnelActive,
             }),
           );
           setLocalParticipant(event.participant);
@@ -682,6 +686,31 @@ export function useRoomSession(options: UseRoomSessionOptions = {}): RoomSession
       autoJoinAttemptedRef.current = false;
     };
   }, [options.initialUrl]);
+
+  useEffect(() => {
+    if (!roomCode) return;
+    const origin =
+      typeof window !== 'undefined' && window.location.origin !== 'null'
+        ? window.location.origin
+        : 'https://pulso.local';
+    setInviteUrl(
+      buildInviteUrl({
+        origin,
+        roomCode,
+        secretKey: secretKeyRef.current,
+        mode: roomMode,
+        onionAddress: onionAddress ?? undefined,
+        publicOrigin: options.runtimeInfo?.publicOrigin,
+        tunnelActive: options.runtimeInfo?.tunnelActive,
+      }),
+    );
+  }, [
+    roomCode,
+    roomMode,
+    onionAddress,
+    options.runtimeInfo?.publicOrigin,
+    options.runtimeInfo?.tunnelActive,
+  ]);
 
   const setTyping = useCallback(
     (isTyping: boolean) => {
