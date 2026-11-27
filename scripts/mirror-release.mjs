@@ -1,16 +1,20 @@
 #!/usr/bin/env node
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isDirectExecution } from './lib/cli-utils.mjs';
 import { formatReleaseTag, normalizeVersion } from './release-artifacts.mjs';
 
 export const DEFAULT_CODEBERG_URL = 'https://codeberg.org';
 export const DEFAULT_GITLAB_URL = 'https://gitlab.com';
 
-const CHECKSUM_MIRROR_FILES = new Set(['SHA256SUMS', 'SHA256SUMS.asc']);
+const CHECKSUM_MIRROR_FILES = new Set([
+  'SHA256SUMS',
+  'SHA256SUMS.asc',
+  'pulso-release-key.asc',
+]);
 
 /**
- * Filters release files to include ONLY PULSO Tor artifacts plus `SHA256SUMS` and `SHA256SUMS.asc`.
+ * Filters release files to include ONLY PULSO Tor artifacts plus `SHA256SUMS`, `SHA256SUMS.asc`, and `pulso-release-key.asc`.
  */
 export function selectTorMirrorFiles(fileNames) {
   return [...fileNames]
@@ -23,7 +27,7 @@ function buildReleaseNotes(tagName) {
   return [
     `PULSO Tor ${tagName} — self-contained zero-trace desktop mirror.`,
     '',
-    'Verify integrity with `SHA256SUMS` and `SHA256SUMS.asc` before running.',
+    'Verify integrity with `SHA256SUMS`, `SHA256SUMS.asc`, and `pulso-release-key.asc` before running.',
   ].join('\n');
 }
 
@@ -432,18 +436,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
 }
 
-export function isDirectExecution() {
-  if (process.env.VITEST) return false;
-  const entry = process.argv[1];
-  if (!entry) return false;
-  try {
-    return fileURLToPath(import.meta.url) === realpathSync(entry);
-  } catch {
-    return fileURLToPath(import.meta.url) === path.resolve(entry);
-  }
-}
-
-if (isDirectExecution()) {
+if (isDirectExecution(import.meta.url)) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

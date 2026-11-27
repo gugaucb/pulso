@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  createMacOsDmg,
   createPortableZip,
   formatReleaseArtifactName,
   parseArgs,
@@ -176,9 +177,68 @@ describe('scripts/package-desktop.mjs', () => {
   });
 
   it('parses CLI options cleanly', () => {
-    const opts = parseArgs(['--flavor', 'tor', '--target', 'macos-arm64', '--dry-run']);
+    const opts = parseArgs([
+      '--flavor',
+      'tor',
+      '--target',
+      'macos-arm64',
+      '--create-dmg',
+      '/tmp/PULSO Tor.app',
+      '--out-dmg',
+      '/tmp/out.dmg',
+      '--dry-run',
+    ]);
     expect(opts.flavor).toBe('tor');
     expect(opts.target).toBe('macos-arm64');
+    expect(opts.createDmgAppPath).toBe('/tmp/PULSO Tor.app');
+    expect(opts.outDmgPath).toBe('/tmp/out.dmg');
     expect(opts.dryRun).toBe(true);
+  });
+
+  it('creates a macOS .dmg from an already-signed .app bundle via hdiutil create', async () => {
+    const root = makeTempDir('pulso-pkg-dmg-');
+    const appPath = path.join(root, 'PULSO Tor.app');
+    mkdirSync(path.join(appPath, 'Contents', 'MacOS'), { recursive: true });
+    writeFileSync(path.join(appPath, 'Contents', 'MacOS', 'PULSO Tor'), 'signed-bin');
+    const outDmgPath = path.join(root, 'dist-packages', 'pulso-tor-v0.1.0-macos-arm64.dmg');
+
+    const commands: Array<{ cmd: string; args: string[] }> = [];
+    let observedStagedAppExists = false;
+    const execSpy = vi.fn((cmd: string, args: string[]) => {
+      commands.push({ cmd, args });
+      if (cmd === 'ditto') {
+        mkdirSync(args[1]!, { recursive: true });
+      }
+      if (cmd === 'hdiutil') {
+        const srcFolderIdx = args.indexOf('-srcfolder');
+        const stageDir = args[srcFolderIdx + 1]!;
+        observedStagedAppExists = existsSync(path.join(stageDir, 'PULSO Tor.app'));
+        writeFileSync(outDmgPath, 'dmg-bytes');
+      }
+      return '';
+    });
+
+    const createdPath = await createMacOsDmg({
+      appPath,
+      outDmgPath,
+      volumeName: 'PULSO Tor',
+      execFileSyncFn: execSpy,
+    });
+
+    expect(createdPath).toBe(outDmgPath);
+    expect(observedStagedAppExists).toBe(true);
+    expect(existsSync(outDmgPath)).toBe(true);
+    expect(commands.map((c) => c.cmd)).toEqual(['ditto', 'hdiutil']);
+    expect(commands[1]!.args).toEqual(
+      expect.arrayContaining([
+        'create',
+        '-volname',
+        'PULSO Tor',
+        '-ov',
+        '-format',
+        'UDZO',
+        outDmgPath,
+      ]),
+    );
   });
 });

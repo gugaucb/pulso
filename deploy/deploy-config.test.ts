@@ -62,6 +62,8 @@ describe('Slice 2: Docker Compose, Caddyfile & .env.example', () => {
     // Minimal default service hardened and bound to loopback
     expect(compose).toMatch(/^\s{2}pulso:/m);
     expect(compose).toContain('127.0.0.1:${PULSO_BIND_PORT:-3001}:3001');
+    expect(compose).toContain('ghcr.io/pulso-app/pulso:latest');
+    expect(compose).not.toContain('ghcr.io/pulso/pulso');
     expect(compose).toContain('read_only: true');
     expect(compose).toContain('tmpfs:');
     expect(compose).toContain('/tmp');
@@ -148,6 +150,8 @@ describe('Slice 3: Official v1 1-click templates (Coolify, Portainer, Render, Fl
     expect(coolify).toMatch(/^\s{2}pulso:/m);
     expect(coolify).toMatch(/^\s{2}coturn:/m);
     expect(coolify).toContain('TRUST_PROXY: "true"');
+    expect(coolify).toContain('ghcr.io/pulso-app/pulso:latest');
+    expect(coolify).not.toContain('ghcr.io/pulso/pulso');
     expect(coolify).toContain('read_only: true');
     expect(coolify).toContain('no-new-privileges:true');
     expect(coolify).toContain('network_mode: host');
@@ -164,6 +168,8 @@ describe('Slice 3: Official v1 1-click templates (Coolify, Portainer, Render, Fl
     expect(portainerCompose).toMatch(/^\s{2}caddy:/m);
     expect(portainerCompose).toMatch(/^\s{2}coturn:/m);
     expect(portainerCompose).toContain('../Caddyfile:/etc/caddy/Caddyfile:ro');
+    expect(portainerCompose).toContain('ghcr.io/pulso-app/pulso:latest');
+    expect(portainerCompose).not.toContain('ghcr.io/pulso/pulso');
     expect(portainerCompose).toContain('read_only: true');
     expect(portainerCompose).toContain('network_mode: host');
     expect(portainerCompose).toContain('--use-auth-secret');
@@ -186,6 +192,8 @@ describe('Slice 3: Official v1 1-click templates (Coolify, Portainer, Render, Fl
     expect(tpl.type).toBe(3);
     expect(tpl.title).toContain('PULSO');
     expect(tpl.repository.stackfile).toBe('deploy/portainer/docker-compose.yml');
+    expect(rawTemplates).toContain('https://github.com/pulso-app/pulso');
+    expect(rawTemplates).not.toContain('https://github.com/pulso/pulso');
     const envNames = tpl.env.map((e) => e.name);
     expect(envNames).toContain('PULSO_DOMAIN');
     expect(envNames).toContain('TURN_SECRET');

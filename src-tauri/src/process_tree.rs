@@ -300,6 +300,21 @@ pub fn purge_tor_temp_dir(path: &Path) -> io::Result<bool> {
     purge_tor_temp_dir_in(path, &std::env::temp_dir())
 }
 
+/// Ensures an optional ephemeral Tor directory is purged and reports whether a tracked
+/// directory is confirmed absent (covering the case where the sidecar already purged it
+/// during `terminate_tree`).
+pub fn ensure_tor_temp_dir_purged_in(path: Option<&Path>, base_dir: &Path) -> bool {
+    let Some(dir) = path else {
+        return false;
+    };
+    let _ = purge_tor_temp_dir_in(dir, base_dir);
+    !dir.exists()
+}
+
+pub fn ensure_tor_temp_dir_purged(path: Option<&Path>) -> bool {
+    ensure_tor_temp_dir_purged_in(path, &std::env::temp_dir())
+}
+
 pub fn cleanup_stale_tor_dirs_in(base_dir: &Path, max_age: Duration) -> io::Result<usize> {
     let now = SystemTime::now();
     let mut removed = 0usize;
@@ -349,10 +364,18 @@ mod tests {
         assert!(purge_tor_temp_dir_in(&tor_dir, &sandbox).unwrap());
         assert!(!tor_dir.exists());
 
+        // Post-sidecar-cleanup case: sidecar already deleted temp dir during terminate_tree
+        let sidecar_cleaned_dir = create_ephemeral_tor_dir_in(&sandbox).unwrap();
+        fs::remove_dir_all(&sidecar_cleaned_dir).unwrap();
+        assert!(!purge_tor_temp_dir_in(&sidecar_cleaned_dir, &sandbox).unwrap());
+        assert!(ensure_tor_temp_dir_purged_in(Some(&sidecar_cleaned_dir), &sandbox));
+        assert!(!ensure_tor_temp_dir_purged_in(None, &sandbox));
+
         // Refuses to purge an arbitrary directory without pulso-tor- prefix
         let unsafe_dir = sandbox.join("unrelated-dir");
         fs::create_dir_all(&unsafe_dir).unwrap();
         assert!(purge_tor_temp_dir_in(&unsafe_dir, &sandbox).is_err());
+        assert!(!ensure_tor_temp_dir_purged_in(Some(&unsafe_dir), &sandbox));
         assert!(unsafe_dir.exists());
 
         let _ = fs::remove_dir_all(&sandbox);

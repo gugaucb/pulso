@@ -1,20 +1,19 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import {
   copyFileSync,
-  createReadStream,
   existsSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   statSync,
 } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { computeFileSha256, isDirectExecution } from './lib/cli-utils.mjs';
+
+export { computeFileSha256 };
 
 export const TARGET_TO_SLUG = new Map([
   ['aarch64-apple-darwin', 'macos-arm64'],
@@ -171,20 +170,10 @@ export async function collectAndRenameArtifacts({
 const EXCLUDED_CHECKSUM_FILES = new Set([
   'SHA256SUMS',
   'SHA256SUMS.asc',
+  'pulso-release-key.asc',
   'release-manifest.json',
   '.DS_Store',
 ]);
-
-export async function computeFileSha256(filePath) {
-  const hash = createHash('sha256');
-  await new Promise((resolve, reject) => {
-    const stream = createReadStream(filePath);
-    stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('error', reject);
-    stream.on('end', resolve);
-  });
-  return hash.digest('hex').toLowerCase();
-}
 
 /**
  * Generates deterministic GNU-compatible `SHA256SUMS` over release files in `dir`.
@@ -266,11 +255,13 @@ export async function verifySha256Sums({
 }
 
 /**
- * Signs `SHA256SUMS` using an armored PGP private key when configured; skips cleanly otherwise.
+ * Signs `SHA256SUMS` and exports the public key (`pulso-release-key.asc`) using an armored PGP
+ * private key when configured; skips cleanly otherwise.
  */
 export async function signSha256Sums({
   checksumsPath,
   ascPath = `${checksumsPath}.asc`,
+  publicKeyPath = path.join(path.dirname(ascPath), 'pulso-release-key.asc'),
   privateKeyArmored = process.env.PULSO_PGP_PRIVATE_KEY ?? '',
   passphrase = process.env.PULSO_PGP_PASSPHRASE ?? '',
   execFileSyncFn = execFileSync,
@@ -282,7 +273,7 @@ export async function signSha256Sums({
   }
 
   if (dryRun) {
-    return { signed: true, skipped: false, dryRun: true, ascPath };
+    return { signed: true, skipped: false, dryRun: true, ascPath, publicKeyPath };
   }
 
   const gpgHome = mkdtempSync(path.join(os.tmpdir(), 'pulso-rel-gpg-'), { mode: 0o700 });
@@ -310,7 +301,14 @@ export async function signSha256Sums({
     signArgs.push('-o', ascPath, checksumsPath);
 
     execFileSyncFn('gpg', signArgs, { stdio: 'ignore' });
-    return { signed: true, skipped: false, ascPath };
+    if (publicKeyPath) {
+      execFileSyncFn(
+        'gpg',
+        ['--homedir', gpgHome, '--batch', '--yes', '--armor', '--export', '-o', publicKeyPath],
+        { stdio: 'ignore' },
+      );
+    }
+    return { signed: true, skipped: false, ascPath, publicKeyPath };
   } finally {
     await rm(gpgHome, { recursive: true, force: true });
   }
@@ -355,7 +353,7 @@ export function buildReleaseManifest({
 }
 
 /**
- * Generates `SHA256SUMS`, optional `SHA256SUMS.asc`, and `release-manifest.json` for `dir`.
+ * Generates `SHA256SUMS`, optional `SHA256SUMS.asc` + `pulso-release-key.asc`, and `release-manifest.json` for `dir`.
  */
 export async function generateReleaseOutputs({
   dir,
@@ -371,6 +369,7 @@ export async function generateReleaseOutputs({
   const pgp = await signSha256Sums({
     checksumsPath: sha256Sums.outPath,
     ascPath: `${sha256Sums.outPath}.asc`,
+    publicKeyPath: path.join(dir, 'pulso-release-key.asc'),
     privateKeyArmored,
     passphrase,
     execFileSyncFn,
@@ -526,18 +525,7 @@ export async function main(argv = process.argv.slice(2)) {
   console.log(`${prefix}PGP signed:   ${result.pgp.signed ? 'yes' : `no (${result.pgp.reason})`}`);
 }
 
-export function isDirectExecution() {
-  if (process.env.VITEST) return false;
-  const entry = process.argv[1];
-  if (!entry) return false;
-  try {
-    return fileURLToPath(import.meta.url) === realpathSync(entry);
-  } catch {
-    return fileURLToPath(import.meta.url) === path.resolve(entry);
-  }
-}
-
-if (isDirectExecution()) {
+if (isDirectExecution(import.meta.url)) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

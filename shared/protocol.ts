@@ -54,7 +54,10 @@ export interface RuntimeInfo {
   turnConfigured?: boolean;
 }
 
-function sanitizeHttpOrigin(value: unknown): string | undefined {
+/**
+ * Validates and normalizes an HTTP/HTTPS origin string, returning `undefined` otherwise.
+ */
+export function sanitizeHttpOrigin(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   if (!trimmed) return undefined;

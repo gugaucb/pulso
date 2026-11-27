@@ -275,6 +275,8 @@ describe('Technical coverage across all 4 locales and tor-mode.md', () => {
       const doc = readGuide(locale, 'operator-server.md');
 
       expect(doc, `${locale}: missing --profile full`).toContain('--profile full');
+      expect(doc, `${locale}: missing ghcr.io/pulso-app/pulso`).toContain('ghcr.io/pulso-app/pulso');
+      expect(doc, `${locale}: unexpected placeholder <org>`).not.toContain('ghcr.io/<org>/pulso');
       expect(doc, `${locale}: missing deploy/docker-compose.yml`).toContain('deploy/docker-compose.yml');
       expect(doc, `${locale}: missing Caddy`).toContain('Caddy');
       expect(doc, `${locale}: missing coturn`).toContain('coturn');

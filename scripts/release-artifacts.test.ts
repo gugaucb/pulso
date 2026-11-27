@@ -154,6 +154,7 @@ describe('scripts/release-artifacts.mjs', () => {
       // Existing metadata files must never be hashed inside SHA256SUMS
       writeFileSync(path.join(root, 'SHA256SUMS'), 'old');
       writeFileSync(path.join(root, 'SHA256SUMS.asc'), 'old-sig');
+      writeFileSync(path.join(root, 'pulso-release-key.asc'), 'old-pub-key');
       writeFileSync(path.join(root, 'release-manifest.json'), '{}');
 
       const { content, entries } = await generateSha256Sums({ dir: root });
@@ -194,11 +195,19 @@ describe('scripts/release-artifacts.mjs', () => {
       expect(existsSync(ascPath)).toBe(false);
 
       const gpgCalls: Array<{ cmd: string; args: string[] }> = [];
+      const expectedPublicKeyPath = path.join(root, 'pulso-release-key.asc');
       const execSpy = vi.fn((cmd: string, args: string[]) => {
         gpgCalls.push({ cmd, args });
         if (args.includes('--detach-sign')) {
           const outIdx = args.indexOf('-o');
           writeFileSync(args[outIdx + 1]!, '-----BEGIN PGP SIGNATURE-----\nmock\n-----END PGP SIGNATURE-----\n');
+        }
+        if (args.includes('--export')) {
+          const outIdx = args.indexOf('-o');
+          writeFileSync(
+            args[outIdx + 1]!,
+            '-----BEGIN PGP PUBLIC KEY BLOCK-----\nmock\n-----END PGP PUBLIC KEY BLOCK-----\n',
+          );
         }
         return '';
       });
@@ -211,8 +220,14 @@ describe('scripts/release-artifacts.mjs', () => {
         execFileSyncFn: execSpy,
       });
 
-      expect(signed).toEqual({ signed: true, skipped: false, ascPath });
+      expect(signed).toEqual({
+        signed: true,
+        skipped: false,
+        ascPath,
+        publicKeyPath: expectedPublicKeyPath,
+      });
       expect(existsSync(ascPath)).toBe(true);
+      expect(existsSync(expectedPublicKeyPath)).toBe(true);
       expect(gpgCalls.some((c) => c.cmd === 'gpg' && c.args.includes('--import'))).toBe(true);
       expect(
         gpgCalls.some(
@@ -221,6 +236,15 @@ describe('scripts/release-artifacts.mjs', () => {
             c.args.includes('--detach-sign') &&
             c.args.includes('--armor') &&
             c.args.includes('--pinentry-mode'),
+        ),
+      ).toBe(true);
+      expect(
+        gpgCalls.some(
+          (c) =>
+            c.cmd === 'gpg' &&
+            c.args.includes('--export') &&
+            c.args.includes('--armor') &&
+            c.args.includes(expectedPublicKeyPath),
         ),
       ).toBe(true);
     });
@@ -418,7 +442,17 @@ describe('scripts/release-artifacts.mjs', () => {
       }
       expect(raw).toContain("'-'");
       expect(raw).toContain('SHA256SUMS');
+      expect(raw).toContain('pulso-release-key.asc');
       expect(raw).toContain('release-manifest.json');
+
+      // macOS must build .app first, verify/ad-hoc sign .app, then package .dmg from signed .app
+      const macPlatforms = (matrix?.platform ?? []) as Array<{ os: string; bundles?: string }>;
+      for (const p of macPlatforms.filter((item) => item.os === 'macos-latest')) {
+        expect(p.bundles).toBe('app');
+      }
+      expect(raw).toContain('--verify-app');
+      expect(raw).toContain('--create-dmg');
+      expect(raw.indexOf('--verify-app')).toBeLessThan(raw.indexOf('--create-dmg'));
     });
   });
 });

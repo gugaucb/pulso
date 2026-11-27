@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdtempSync, realpathSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdtempSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { build as esbuild } from 'esbuild';
+import { isDirectExecution } from './lib/cli-utils.mjs';
 
 export const SIDECAR_ENTRYPOINT = 'server/sidecar.ts';
 export const SIDECAR_BINARY_PREFIX = 'pulso-sidecar';
@@ -385,18 +385,7 @@ export async function main(argv = process.argv.slice(2)) {
   console.log(`PULSO Node.js SEA sidecar ready at ${result.outputPath}`);
 }
 
-export function isDirectExecution() {
-  if (process.env.VITEST) return false;
-  const entry = process.argv[1];
-  if (!entry) return false;
-  try {
-    return fileURLToPath(import.meta.url) === realpathSync(entry);
-  } catch {
-    return fileURLToPath(import.meta.url) === path.resolve(entry);
-  }
-}
-
-if (isDirectExecution()) {
+if (isDirectExecution(import.meta.url)) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

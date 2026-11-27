@@ -37,14 +37,14 @@ jobs:
             rust_triple: aarch64-apple-darwin
             tor_target: macos-aarch64
             cloudflared_target: darwin-arm64
-            bundles: app,dmg
+            bundles: app
           - os: macos-latest
             slug: macos-x64
             node_arch: x64
             rust_triple: x86_64-apple-darwin
             tor_target: macos-x86_64
             cloudflared_target: darwin-amd64
-            bundles: app,dmg
+            bundles: app
           - os: windows-latest
             slug: windows-x64
             node_arch: x64
@@ -182,6 +182,23 @@ jobs:
             node scripts/package-desktop.mjs --flavor ${{ matrix.flavor }} --verify-app "${APP_PATH}"
           fi
 
+      - name: Package macOS .dmg from signed .app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          APP_PATH="$(find "src-tauri/target/${{ matrix.platform.rust_triple }}/release/bundle/macos" -maxdepth 1 -name '*.app' | head -n 1)"
+          if [ -z "${APP_PATH}" ]; then
+            echo "Expected signed .app bundle was not found" >&2
+            exit 1
+          fi
+          mkdir -p dist-packages
+          node scripts/package-desktop.mjs \
+            --flavor ${{ matrix.flavor }} \
+            --target ${{ matrix.platform.rust_triple }} \
+            --version ${{ steps.prep.outputs.version }} \
+            --create-dmg "${APP_PATH}" \
+            --out-dmg "dist-packages/pulso-${{ matrix.flavor }}-v${{ steps.prep.outputs.version }}-${{ matrix.platform.slug }}.dmg"
+
       - name: Package Windows portable .zip archive
         if: runner.os == 'Windows'
         shell: pwsh
@@ -251,7 +268,7 @@ jobs:
           pattern: pulso-*
           merge-multiple: true
 
-      - name: Generate SHA256SUMS, optional SHA256SUMS.asc, and release-manifest.json
+      - name: Generate SHA256SUMS, optional SHA256SUMS.asc & pulso-release-key.asc, and release-manifest.json
         env:
           PULSO_PGP_PRIVATE_KEY: ${{ secrets.PULSO_PGP_PRIVATE_KEY }}
           PULSO_PGP_PASSPHRASE: ${{ secrets.PULSO_PGP_PASSPHRASE }}

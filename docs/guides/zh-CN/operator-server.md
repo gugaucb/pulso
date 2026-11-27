@@ -4,7 +4,7 @@
 
 本指南面向**运维者**，说明如何在自有 VPS 或一键部署 PaaS 平台上发布和维护 **PULSO 服务器** **实例**（**标准模式**）。
 
-官方容器镜像 `ghcr.io/<org>/pulso`（支持 `linux/amd64` 与 `linux/arm64` 多架构）基于 `gcr.io/distroless/nodejs22-debian12:nonroot`（UID `65532`），默认启用只读根文件系统（`read_only: true`）、移除全部权限位（`cap_drop: [ALL]`），并通过 `GET /healthz` 进行健康检查。
+官方容器镜像 `ghcr.io/pulso-app/pulso`（支持 `linux/amd64` 与 `linux/arm64` 多架构）基于 `gcr.io/distroless/nodejs22-debian12:nonroot`（UID `65532`），默认启用只读根文件系统（`read_only: true`）、移除全部权限位（`cap_drop: [ALL]`），并通过 `GET /healthz` 进行健康检查。
 
 ---
 
