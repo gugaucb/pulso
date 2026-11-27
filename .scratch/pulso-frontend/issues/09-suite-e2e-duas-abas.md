@@ -4,11 +4,15 @@
 
 **Blocked by:** 05: Contador de Inatividade regressivo, alertas de expiração e autodestruição com purga, 07: Modo Tor na interface e bloqueio estrito de áudio/vídeo, 08: Mitigação anti-printscreen, painel de privacidade e responsividade mobile completa
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Playwright configurado para subir a aplicação compilada e abrir duas abas/contextos reais representando **Anfitrião** e **Convidado**.
-- [ ] Fluxo E2E desktop completo: **Anfitrião** cria **Sala** e copia link com `#k`, **Convidado** entra pelo link/código, ambos trocam **Mensagens Efêmeras** cifradas em tempo real com indicador *"digitando…"* e conferem o código visual **SAS** idêntico.
-- [ ] Fluxo E2E verifica troca de idioma (`pt-br`, `en`, `es`, `zh-CN`), alternância entre tema claro e tema escuro, preview/controles de **Chamada de Vídeo** no **Modo Normal** (com dispositivos simulados do navegador) e bloqueio estrito da câmera no **Modo Tor**.
-- [ ] Fluxo E2E valida cortina anti-printscreen ao perder foco e autodestruição completa ao zerar o **Contador de Inatividade**, removendo todo conteúdo visível.
-- [ ] Fluxo E2E em viewport mobile (`390x844`) valida entrada, cabeçalho compacto, abertura/fechamento do *drawer* lateral e envio de **Mensagens Efêmeras**.
-- [ ] Asserção explícita no fim dos cenários confirma que `localStorage`, `sessionStorage` e `IndexedDB` permanecem vazios sem códigos, mensagens ou chaves residuais.
+- [x] Playwright configurado para subir a aplicação compilada e abrir duas abas/contextos reais representando **Anfitrião** e **Convidado**.
+- [x] Fluxo E2E desktop completo: **Anfitrião** cria **Sala** e copia link com `#k`, **Convidado** entra pelo link/código, ambos trocam **Mensagens Efêmeras** cifradas em tempo real com indicador *"digitando…"* e conferem o código visual **SAS** idêntico.
+- [x] Fluxo E2E verifica troca de idioma (`pt-br`, `en`, `es`, `zh-CN`), alternância entre tema claro e tema escuro, preview/controles de **Chamada de Vídeo** no **Modo Normal** (com dispositivos simulados do navegador) e bloqueio estrito da câmera no **Modo Tor**.
+- [x] Fluxo E2E valida cortina anti-printscreen ao perder foco e autodestruição completa ao zerar o **Contador de Inatividade**, removendo todo conteúdo visível.
+- [x] Fluxo E2E em viewport mobile (`390x844`) valida entrada, cabeçalho compacto, abertura/fechamento do *drawer* lateral e envio de **Mensagens Efêmeras**.
+- [x] Asserção explícita no fim dos cenários confirma que `localStorage`, `sessionStorage` e `IndexedDB` permanecem vazios sem códigos, mensagens ou chaves residuais.
+
+## Comments
+
+- Resolved on integration branch `feat/pulso-frontend` (merged in `b1272fa`, refined in `ba5fcb8`). Verified via `npx tsc --noEmit`, Vitest (`npm test`), `vite build`, and Playwright E2E (`npm run test:e2e`, 5/5 passing against `dist/`).

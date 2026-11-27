@@ -3,5 +3,8 @@ dist/
 coverage/
 playwright-report/
 test-results/
+.worktrees/
 .DS_Store
 *.local
+tor_data/
+.tor-bin/

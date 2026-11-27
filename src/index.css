@@ -1,0 +1,376 @@
+@import "tailwindcss";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* -------------------------------------------------------------------------
+ * Design tokens — "Sinal Vital"
+ * Semantic colors live in CSS variables so a single class flips the theme.
+ * ---------------------------------------------------------------------- */
+:root {
+  --canvas: #f6f6fa;
+  --surface: #ffffff;
+  --surface-2: #f2f2f8;
+  --line: rgb(16 17 38 / 0.08);
+  --line-strong: rgb(16 17 38 / 0.14);
+  --ink: #0d0e1a;
+  --ink-2: #4a4c62;
+  --ink-3: #7d8096;
+  --accent: #5b3df5;
+  --accent-strong: #4a2fe0;
+  --accent-soft: rgb(91 61 245 / 0.07);
+  --accent-ink: #4a2fe0;
+  --signal-a: #4f46e5;
+  --signal-b: #8b2fc9;
+  --glow: rgb(91 61 245 / 0.16);
+  --grain-opacity: 0.035;
+  --shadow-panel:
+    0 1px 0 rgb(255 255 255 / 0.9) inset,
+    0 1px 2px rgb(16 17 38 / 0.04),
+    0 8px 24px -8px rgb(16 17 38 / 0.08),
+    0 32px 64px -24px rgb(49 32 140 / 0.14);
+}
+
+.dark {
+  --canvas: #0c0d16;
+  --surface: #141522;
+  --surface-2: #1a1c2b;
+  --line: rgb(255 255 255 / 0.07);
+  --line-strong: rgb(255 255 255 / 0.12);
+  --ink: #f1f2f8;
+  --ink-2: #a6a9c0;
+  --ink-3: #6f7290;
+  --accent: #6a4fff;
+  --accent-strong: #7d66ff;
+  --accent-soft: rgb(125 102 255 / 0.12);
+  --accent-ink: #b0a3ff;
+  --signal-a: #6d66ff;
+  --signal-b: #b04de6;
+  --glow: rgb(106 79 255 / 0.22);
+  --grain-opacity: 0.05;
+  --shadow-panel:
+    0 1px 0 rgb(255 255 255 / 0.05) inset,
+    0 1px 2px rgb(0 0 0 / 0.3),
+    0 24px 64px -24px rgb(0 0 0 / 0.6);
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+}
+
+@theme {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Motion tokens (emil-design-eng). Strong curves only — never ease-in on UI. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --default-transition-duration: 160ms;
+  --default-transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@layer base {
+  html,
+  body {
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11" 1;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--ink);
+  }
+
+  .font-cjk,
+  [data-locale="zh-CN"] {
+    font-family: "Inter", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
+  }
+
+  /* Codes, SAS and timers: Inter's own tabular figures instead of a terminal mono. */
+  .font-mono-tabular {
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums slashed-zero;
+    font-feature-settings: "tnum" 1, "zero" 1, "ss01" 1, "cv11" 1;
+  }
+
+  /* One focus system: outline only (rings in markup are redundant). */
+  :where(button, a, select, input, textarea, [role="switch"], [role="menuitem"], [role="menuitemradio"]):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Press feedback for every pressable (emil-design-eng: scale 0.97, 100–160ms).
+     Uses the independent `scale` property so it never clobbers Tailwind translates. */
+  button:not(:disabled):not([role="menuitem"]):not([role="menuitemradio"]):not([role="switch"]) {
+    transition-property: color, background-color, border-color, box-shadow, opacity, scale;
+    transition-duration: 160ms;
+    transition-timing-function: var(--ease-out);
+  }
+
+  button:not(:disabled):not([role="menuitem"]):not([role="menuitemradio"]):not([role="switch"]):active {
+    scale: 0.97;
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * Typography — tracking and leading scale inversely with size (apple-design §15)
+ * ---------------------------------------------------------------------- */
+.type-display {
+  font-size: clamp(2.5rem, 1.6rem + 3.4vw, 4.5rem);
+  line-height: 1;
+  letter-spacing: -0.045em;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+.type-title {
+  font-size: clamp(2rem, 1.5rem + 2vw, 3rem);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+.type-lead {
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  letter-spacing: -0.006em;
+  text-wrap: pretty;
+}
+
+.type-eyebrow {
+  font-size: 0.6875rem;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------------------
+ * Atmosphere — static glow + film grain. Never animated (apple-design §14).
+ * ---------------------------------------------------------------------- */
+.pulso-atmosphere {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(60rem 36rem at 12% -10%, var(--glow), transparent 60%),
+    radial-gradient(40rem 30rem at 100% 110%, rgb(139 47 201 / 0.07), transparent 60%);
+}
+
+.pulso-atmosphere::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.pulso-atmosphere[data-tone="quiet"] {
+  background: radial-gradient(50rem 32rem at 50% 0%, rgb(125 128 150 / 0.12), transparent 65%);
+}
+
+/* -------------------------------------------------------------------------
+ * Choreographed entrances (choreograph skill: one entrance per container,
+ * non-uniform delays, fill-mode both, never blocks interaction).
+ * ---------------------------------------------------------------------- */
+@keyframes pulso-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rise, 12px));
+  }
+}
+
+@keyframes pulso-materialize {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(6px);
+  }
+}
+
+@keyframes pulso-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.enter-rise {
+  animation: pulso-rise var(--dur, 600ms) var(--ease-out) var(--delay, 0ms) both;
+}
+
+.enter-materialize {
+  animation: pulso-materialize var(--dur, 520ms) var(--ease-out) var(--delay, 0ms) both;
+}
+
+/* Conditional blocks that mount in place (guidance, alerts). */
+.enter-in {
+  transition:
+    opacity 220ms var(--ease-out),
+    transform 220ms var(--ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * Pulse line — the product's signature.
+ * ---------------------------------------------------------------------- */
+.pulse-line path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+@keyframes pulse-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.pulse-line[data-variant="draw"] .pulse-trace {
+  stroke-dasharray: 1;
+  animation: pulse-draw 1100ms var(--ease-in-out) 60ms both;
+}
+
+/* Flatline: peaks collapse into the baseline, then the flat trace takes over. */
+@keyframes pulse-collapse {
+  0% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(0.04);
+    opacity: 0;
+  }
+}
+
+.pulse-line[data-variant="flatline"] .pulse-trace {
+  transform-box: view-box;
+  transform-origin: 0 26px;
+  animation: pulse-collapse 700ms var(--ease-in-out) 200ms both;
+}
+
+.pulse-line[data-variant="flatline"] .pulse-flat {
+  animation: pulso-fade 360ms ease 640ms both;
+}
+
+/* Scan: constant motion while connecting → linear. */
+@keyframes pulse-scan {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: -1;
+  }
+}
+
+.pulse-line[data-variant="scan"] .pulse-trace {
+  stroke-dasharray: 0.45 0.55;
+  animation: pulse-scan 1100ms linear infinite;
+}
+
+.pulse-line[data-variant="scan"] .pulse-ghost {
+  opacity: 0.25;
+}
+
+/* -------------------------------------------------------------------------
+ * Print & reduced motion
+ * ---------------------------------------------------------------------- */
+.pulso-print-notice {
+  display: none;
+}
+
+@media print {
+  .pulso-print-hide {
+    display: none !important;
+  }
+
+  .pulso-print-notice {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 2rem;
+    text-align: center;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #111827;
+    background: #ffffff;
+  }
+}
+
+@keyframes pulso-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.animate-message-in {
+  animation: pulso-message-in 220ms var(--ease-out) both;
+}
+
+/* Reduced motion = fewer and gentler, not zero: keep opacity, drop movement. */
+@media (prefers-reduced-motion: reduce) {
+  .enter-rise,
+  .enter-materialize,
+  .animate-message-in {
+    animation: pulso-fade 200ms ease both;
+  }
+
+  .enter-in {
+    transform: none;
+    @starting-style {
+      transform: none;
+    }
+  }
+
+  button:not(:disabled):active {
+    scale: 1 !important;
+  }
+
+  .pulse-line[data-variant="draw"] .pulse-trace {
+    stroke-dasharray: none;
+    animation: pulso-fade 300ms ease both;
+  }
+
+  .pulse-line[data-variant="flatline"] .pulse-trace {
+    animation: none;
+    opacity: 0;
+  }
+
+  .pulse-line[data-variant="flatline"] .pulse-flat {
+    animation: pulso-fade 300ms ease both;
+  }
+
+  .pulse-line[data-variant="scan"] .pulse-trace {
+    stroke-dasharray: none;
+    animation: none;
+  }
+}
