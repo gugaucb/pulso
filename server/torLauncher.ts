@@ -9,6 +9,8 @@ import type { Clock } from './clock';
 import { resolvePort } from './config';
 import {
   TorController,
+  createEphemeralTorDataDir,
+  purgeStaleTorDataDirs,
   type TorControllerOptions,
   type TorControllerState,
 } from './tor/torController';
@@ -42,6 +44,7 @@ export interface TorServerHandle {
   app: FastifyInstance;
   port: number;
   localUrl: string;
+  dataDir: string;
   torController: TorControllerLike;
   getRuntimeInfo: () => RuntimeInfo;
   ready: Promise<string>;
@@ -50,15 +53,17 @@ export interface TorServerHandle {
 
 /**
  * Starts the Fastify server strictly on 127.0.0.1 coupled to TorController,
- * exposing live Tor runtime status via GET /api/runtime and purging ./tor_data on stop or failure.
+ * exposing live Tor runtime status via GET /api/runtime and purging the ephemeral Tor dataDir on stop or failure.
  */
 export async function startTorServer(options: StartTorServerOptions = {}): Promise<TorServerHandle> {
   const env = options.env ?? process.env;
   const cwd = options.cwd ?? process.cwd();
-  const dataDir = options.dataDir ?? path.resolve(cwd, 'tor_data');
+  const dataDir = options.dataDir ?? createEphemeralTorDataDir();
   const requestedPort = options.port ?? resolvePort(env);
   const log = options.log ?? ((msg: string) => console.info(msg));
   const errorLog = options.errorLog ?? ((msg: string) => console.error(msg));
+
+  await purgeStaleTorDataDirs({ excludePaths: [dataDir] });
 
   let runtimeInfo: RuntimeInfo = {
     runtimeMode: 'tor',
@@ -73,19 +78,26 @@ export async function startTorServer(options: StartTorServerOptions = {}): Promi
     log('Warning: Frontend build not found in dist/. Run `npm run build` so participants can load the web interface.');
   }
 
-  const app = await createServer({
-    clock: options.clock,
-    staticDir: resolvedStaticDir,
-    getRuntimeInfo,
-    onAllRoomsClosed:
-      options.autoStopOnRoomClose === false
-        ? undefined
-        : () => {
-            void stopFn?.();
-          },
-  });
+  let app: FastifyInstance | undefined;
+  try {
+    app = await createServer({
+      clock: options.clock,
+      staticDir: resolvedStaticDir,
+      getRuntimeInfo,
+      onAllRoomsClosed:
+        options.autoStopOnRoomClose === false
+          ? undefined
+          : () => {
+              void stopFn?.();
+            },
+    });
 
-  await app.listen({ host: LOOPBACK_HOST, port: requestedPort });
+    await app.listen({ host: LOOPBACK_HOST, port: requestedPort });
+  } catch (err) {
+    await app?.close().catch(() => {});
+    await rm(dataDir, { recursive: true, force: true }).catch(() => {});
+    throw err;
+  }
   const address = app.server.address();
   const boundPort = typeof address === 'object' && address !== null ? address.port : requestedPort;
   const localUrl = `http://${LOOPBACK_HOST}:${boundPort}`;
@@ -200,6 +212,7 @@ export async function startTorServer(options: StartTorServerOptions = {}): Promi
     app,
     port: boundPort,
     localUrl,
+    dataDir,
     torController,
     getRuntimeInfo,
     ready,

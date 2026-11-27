@@ -67,3 +67,18 @@ export function buildIceServers(
 
   return servers;
 }
+
+/**
+ * Returns true if at least one ICE server entry configures a turn: or turns: relay URL.
+ */
+export function hasTurnConfigured(servers: IceServerConfig[]): boolean {
+  for (const server of servers) {
+    const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+    for (const rawUrl of urls) {
+      if (typeof rawUrl === 'string' && /^turns?:/i.test(rawUrl.trim())) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
