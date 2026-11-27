@@ -6,5 +6,14 @@ test-results/
 .worktrees/
 .DS_Store
 *.local
+.env
+deploy/.env
 tor_data/
 .tor-bin/
+.cloudflared-bin/
+dist-desktop/
+dist-packages/
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/resources/
+src-tauri/gen/

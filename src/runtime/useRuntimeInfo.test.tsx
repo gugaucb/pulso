@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimeInfo } from '../domain/types';
 import { useRuntimeInfo } from './useRuntimeInfo';
@@ -117,6 +117,115 @@ describe('useRuntimeInfo', () => {
     await new Promise((r) => setTimeout(r, 25));
     expect(JSON.parse(screen.getByTestId('runtime').textContent!)).toEqual({
       runtimeMode: 'normal',
+    });
+  });
+
+  it('polls while normal mode tunnelActive is true and publicOrigin is pending, then stops once ready', async () => {
+    const responses: RuntimeInfo[] = [
+      { runtimeMode: 'normal', tunnelActive: true, tunnelProvider: 'cloudflare' },
+      {
+        runtimeMode: 'normal',
+        tunnelActive: true,
+        tunnelProvider: 'cloudflare',
+        publicOrigin: 'https://pending-ready.trycloudflare.com',
+      },
+    ];
+    let callCount = 0;
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      const payload = responses[Math.min(callCount, responses.length - 1)];
+      callCount += 1;
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    render(<Probe pollIntervalMs={10} />);
+
+    await waitFor(() => {
+      expect(JSON.parse(screen.getByTestId('runtime').textContent!)).toEqual({
+        runtimeMode: 'normal',
+        tunnelActive: true,
+        tunnelProvider: 'cloudflare',
+        publicOrigin: 'https://pending-ready.trycloudflare.com',
+      });
+    });
+
+    const countAfterReady = fetchMock.mock.calls.length;
+    await new Promise((r) => setTimeout(r, 40));
+    expect(fetchMock.mock.calls.length).toBe(countAfterReady);
+  });
+
+  it('refreshes /api/runtime on window focus and visible visibilitychange when tunnel becomes ready later', async () => {
+    const responses: RuntimeInfo[] = [
+      { runtimeMode: 'normal', tunnelActive: false },
+      {
+        runtimeMode: 'normal',
+        tunnelActive: true,
+        tunnelProvider: 'cloudflare',
+        publicOrigin: 'https://focus-refresh.trycloudflare.com',
+      },
+      {
+        runtimeMode: 'normal',
+        tunnelActive: true,
+        tunnelProvider: 'cloudflare',
+        publicOrigin: 'https://visibility-refresh.trycloudflare.com',
+      },
+    ];
+    let callCount = 0;
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      const payload = responses[Math.min(callCount, responses.length - 1)];
+      callCount += 1;
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    render(<Probe pollIntervalMs={10} />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(JSON.parse(screen.getByTestId('runtime').textContent!)).toEqual({
+      runtimeMode: 'normal',
+      tunnelActive: false,
+    });
+
+    // No idle polling happens without focus/visibility
+    await new Promise((r) => setTimeout(r, 30));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fireEvent.focus(window);
+    });
+
+    await waitFor(() => {
+      expect(JSON.parse(screen.getByTestId('runtime').textContent!)).toEqual({
+        runtimeMode: 'normal',
+        tunnelActive: true,
+        tunnelProvider: 'cloudflare',
+        publicOrigin: 'https://focus-refresh.trycloudflare.com',
+      });
+    });
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    await waitFor(() => {
+      expect(JSON.parse(screen.getByTestId('runtime').textContent!)).toEqual({
+        runtimeMode: 'normal',
+        tunnelActive: true,
+        tunnelProvider: 'cloudflare',
+        publicOrigin: 'https://visibility-refresh.trycloudflare.com',
+      });
     });
   });
 });

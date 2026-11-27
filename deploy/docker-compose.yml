@@ -1,0 +1,119 @@
+# PULSO Servidor — Docker Compose
+#
+# Perfil mínimo (padrão):
+#   docker compose up -d
+#   Expõe apenas a Instância `pulso` em 127.0.0.1:3001 para proxy reverso existente.
+#
+# Perfil completo (TLS automático zero-log via Caddy + TURN/STUN endurecido via coturn):
+#   cp .env.example .env  # defina PULSO_DOMAIN, TURN_SECRET, TURN_URLS e TRUST_PROXY=true
+#   docker compose --profile full up -d
+#   Libere no firewall do host: 80/tcp, 443/tcp, 443/udp, 3478/tcp, 3478/udp e 49160-49300/udp.
+
+services:
+  pulso:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: ${PULSO_IMAGE:-ghcr.io/gugaucb/pulso:latest}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:${PULSO_BIND_PORT:-3001}:3001"
+    environment:
+      PORT: "3001"
+      HOST: "0.0.0.0"
+      # Defina TRUST_PROXY=true ao usar `--profile full` (Caddy) ou outro proxy reverso confiável
+      TRUST_PROXY: "${TRUST_PROXY:-false}"
+      STUN_URLS: "${STUN_URLS-stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302}"
+      TURN_URLS: "${TURN_URLS:-}"
+      TURN_SECRET: "${TURN_SECRET:-}"
+      TURN_TTL_SECONDS: "${TURN_TTL_SECONDS:-3600}"
+      TURN_USERNAME: "${TURN_USERNAME:-}"
+      TURN_CREDENTIAL: "${TURN_CREDENTIAL:-}"
+      PULSO_INACTIVITY_MS: "${PULSO_INACTIVITY_MS:-3600000}"
+      PULSO_GRACE_WINDOW_MS: "${PULSO_GRACE_WINDOW_MS:-30000}"
+      PULSO_MAX_ROOMS: "${PULSO_MAX_ROOMS:-1000}"
+
+  caddy:
+    profiles:
+      - full
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      pulso:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      PULSO_DOMAIN: "${PULSO_DOMAIN:?Defina PULSO_DOMAIN no .env para o perfil full}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  coturn:
+    profiles:
+      - full
+    image: coturn/coturn:4.6-alpine
+    restart: unless-stopped
+    # network_mode: host evita overhead do docker-proxy no range UDP 49160-49300
+    # e abre diretamente 3478/udp, 3478/tcp e 49160-49300/udp no host.
+    network_mode: host
+    read_only: true
+    tmpfs:
+      - /var/tmp:rw,noexec,nosuid,nodev,size=16m
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DETECT_EXTERNAL_IP: "${DETECT_EXTERNAL_IP:-yes}"
+      DETECT_RELAY_IP: "${DETECT_RELAY_IP:-yes}"
+    command:
+      - -n
+      - --log-file=/dev/null
+      - --no-stdout-log
+      - --no-cli
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49300
+      - --realm=${TURN_REALM:-${PULSO_DOMAIN:-pulso.local}}
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET:?Defina TURN_SECRET no .env para o perfil full}
+      - --fingerprint
+      - --no-tlsv1
+      - --no-tlsv1_1
+      - --no-loopback-peers
+      - --no-multicast-peers
+      - --denied-peer-ip=0.0.0.0-0.255.255.255
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=100.64.0.0-100.127.255.255
+      - --denied-peer-ip=127.0.0.0-127.255.255.255
+      - --denied-peer-ip=169.254.0.0-169.254.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
+      - --denied-peer-ip=::1
+      - --denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+      - --denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+
+volumes:
+  caddy_data:
+  caddy_config:

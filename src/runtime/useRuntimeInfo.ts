@@ -32,10 +32,20 @@ function resolveOnionOriginRuntime(options?: UseRuntimeInfoOptions): RuntimeInfo
   };
 }
 
+function shouldPollRuntime(runtime: RuntimeInfo): boolean {
+  if (runtime.runtimeMode === 'tor' && runtime.torStatus === 'bootstrapping') {
+    return true;
+  }
+  if (runtime.runtimeMode === 'normal' && runtime.tunnelActive === true && !runtime.publicOrigin) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Discovers live server runtime mode (`normal` vs `tor`) via GET /api/runtime,
- * polling briefly while Tor is bootstrapping, or returning immediately when overridden
- * or served from an `.onion` origin.
+ * polling briefly while Tor is bootstrapping or a normal-mode tunnel is pending its
+ * public origin, and refreshing on window focus / visibility return.
  */
 export function useRuntimeInfo(
   override?: RuntimeInfo,
@@ -51,10 +61,21 @@ export function useRuntimeInfo(
     }
 
     let cancelled = false;
+    let inFlight = false;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
     const controller = new AbortController();
 
+    const clearPollTimer = () => {
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+    };
+
     const fetchRuntime = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      clearPollTimer();
       try {
         const res = await fetch('/api/runtime', {
           cache: 'no-store',
@@ -65,7 +86,7 @@ export function useRuntimeInfo(
         if (cancelled) return;
         setFetchedRuntime(parsed);
 
-        if (parsed.runtimeMode === 'tor' && parsed.torStatus === 'bootstrapping') {
+        if (shouldPollRuntime(parsed)) {
           pollTimer = setTimeout(() => {
             if (!cancelled) {
               void fetchRuntime();
@@ -74,16 +95,39 @@ export function useRuntimeInfo(
         }
       } catch {
         // Fallback silently to default normal runtime when offline or unmounted
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const handleFocus = () => {
+      void fetchRuntime();
+    };
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void fetchRuntime();
       }
     };
 
     void fetchRuntime();
 
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleFocus);
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
     return () => {
       cancelled = true;
       controller.abort();
-      if (pollTimer) {
-        clearTimeout(pollTimer);
+      clearPollTimer();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleFocus);
+      }
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
       }
     };
   }, [Boolean(override), Boolean(onionOriginRuntime), pollIntervalMs]);

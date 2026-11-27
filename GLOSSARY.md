@@ -43,3 +43,11 @@ _Avoid_: Reunião, videoconferência, call, live
 **Contador de Inatividade**:
 Relógio regressivo visível na **Sala** que indica o tempo restante sem atividade até a autodestruição da **Sala** e a purga imediata de todas as **Mensagens Efêmeras**.
 _Avoid_: TTL, timeout, cronômetro, expiração
+
+**Instância**:
+Uma execução isolada do PULSO em execução local ou em servidor, responsável por servir a interface e intermediar uma ou mais **Salas** em RAM.
+_Avoid_: Deploy, nó, cluster, ambiente
+
+**Operador**:
+Pessoa ou organização que provisiona e mantém uma **Instância** no **Modo Normal** em servidor próprio para uso de outros **Anfitriões** e **Convidados**.
+_Avoid_: Admin, provedor, dono do servidor

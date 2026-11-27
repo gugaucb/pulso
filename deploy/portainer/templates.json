@@ -1,0 +1,70 @@
+{
+  "version": "3",
+  "templates": [
+    {
+      "type": 3,
+      "title": "PULSO Servidor",
+      "description": "Instância efêmera 1:1 do PULSO no Modo Normal com E2EE em RAM, Caddy (TLS automático zero-log e wss://) e coturn endurecido para Chamada de Vídeo.",
+      "note": "Libere no firewall do servidor: 80/tcp, 443/tcp, 443/udp (Caddy TLS) e 3478/tcp, 3478/udp, 49160-49300/udp (coturn TURN/STUN).",
+      "categories": ["Communication", "Privacy"],
+      "platform": "linux",
+      "repository": {
+        "url": "https://github.com/gugaucb/pulso",
+        "stackfile": "deploy/portainer/docker-compose.yml"
+      },
+      "env": [
+        {
+          "name": "PULSO_DOMAIN",
+          "label": "Domínio da Instância",
+          "description": "FQDN apontando para esta VPS (usado pelo Caddy para TLS automático e realm do coturn).",
+          "preset": false
+        },
+        {
+          "name": "TURN_SECRET",
+          "label": "Segredo TURN compartilhado",
+          "description": "Segredo HMAC-SHA1 compartilhado entre PULSO e coturn (--use-auth-secret). Gere um valor aleatório longo.",
+          "preset": false
+        },
+        {
+          "name": "TURN_URLS",
+          "label": "URLs TURN (opcional)",
+          "description": "Padrão: turn:<PULSO_DOMAIN>:3478?transport=udp e tcp.",
+          "default": ""
+        },
+        {
+          "name": "STUN_URLS",
+          "label": "URLs STUN",
+          "description": "Lista separada por vírgula. Deixe vazio para desativar STUN.",
+          "default": "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302"
+        },
+        {
+          "name": "TRUST_PROXY",
+          "label": "Confiar no proxy reverso",
+          "description": "Mantenha true quando atrás do Caddy incluído na stack.",
+          "default": "true"
+        },
+        {
+          "name": "DETECT_EXTERNAL_IP",
+          "label": "Detectar IP externo no coturn",
+          "description": "Ative (yes) em VPS atrás de NAT 1:1.",
+          "default": "yes"
+        },
+        {
+          "name": "PULSO_INACTIVITY_MS",
+          "label": "Contador de Inatividade (ms)",
+          "default": "3600000"
+        },
+        {
+          "name": "PULSO_GRACE_WINDOW_MS",
+          "label": "Janela de reconexão (ms)",
+          "default": "30000"
+        },
+        {
+          "name": "PULSO_MAX_ROOMS",
+          "label": "Máximo de Salas em RAM",
+          "default": "1000"
+        }
+      ]
+    }
+  ]
+}

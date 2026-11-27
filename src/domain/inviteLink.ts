@@ -1,3 +1,4 @@
+import { sanitizeHttpOrigin } from '../../shared/protocol';
 import { normalizeOnionAddress } from './onionAddress';
 import { formatRoomCode, isValidRoomCode } from './roomCode';
 import type { RoomMode } from './types';
@@ -8,6 +9,8 @@ export interface BuildInviteUrlParams {
   secretKey?: string;
   mode?: RoomMode;
   onionAddress?: string;
+  publicOrigin?: string;
+  tunnelActive?: boolean;
 }
 
 export interface ParsedInviteUrl {
@@ -26,8 +29,15 @@ export function buildInviteUrl({
   secretKey,
   mode = 'normal',
   onionAddress,
+  publicOrigin,
+  tunnelActive = false,
 }: BuildInviteUrlParams): string {
-  const baseOrigin = mode === 'tor' && onionAddress ? onionAddress.replace(/\/+$/, '') : origin.replace(/\/+$/, '');
+  const resolvedPublicOrigin =
+    mode === 'normal' && tunnelActive ? sanitizeHttpOrigin(publicOrigin) : undefined;
+  const baseOrigin =
+    mode === 'tor' && onionAddress
+      ? onionAddress.replace(/\/+$/, '')
+      : (resolvedPublicOrigin ?? origin.replace(/\/+$/, ''));
   const formattedCode = formatRoomCode(roomCode);
   const url = new URL(`${baseOrigin}/`);
   url.searchParams.set('room', formattedCode);

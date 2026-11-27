@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PULSO Local",
+  "identifier": "org.pulso.local",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "PULSO Local",
+        "url": "desktop.html"
+      }
+    ]
+  },
+  "bundle": {
+    "externalBin": ["binaries/pulso-sidecar", "binaries/cloudflared"],
+    "resources": {
+      "../dist/": "dist/"
+    },
+    "macOS": {
+      "signingIdentity": "-"
+    }
+  }
+}

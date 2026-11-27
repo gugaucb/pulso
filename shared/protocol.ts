@@ -48,6 +48,31 @@ export interface RuntimeInfo {
   runtimeMode: 'normal' | 'tor';
   onionAddress?: string;
   torStatus?: 'bootstrapping' | 'ready' | 'error';
+  publicOrigin?: string;
+  tunnelActive?: boolean;
+  tunnelProvider?: 'cloudflare';
+  turnConfigured?: boolean;
+}
+
+/**
+ * Validates and normalizes an HTTP/HTTPS origin string, returning `undefined` otherwise.
+ */
+export function sanitizeHttpOrigin(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  try {
+    const parsed = new URL(trimmed);
+    if (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      parsed.origin !== 'null'
+    ) {
+      return parsed.origin;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
 
 /**
@@ -70,6 +95,19 @@ export function sanitizeRuntimeInfo(info: unknown): RuntimeInfo {
     obj.torStatus === 'error'
   ) {
     sanitized.torStatus = obj.torStatus;
+  }
+  const publicOrigin = sanitizeHttpOrigin(obj.publicOrigin);
+  if (publicOrigin) {
+    sanitized.publicOrigin = publicOrigin;
+  }
+  if (typeof obj.tunnelActive === 'boolean') {
+    sanitized.tunnelActive = obj.tunnelActive;
+  }
+  if (obj.tunnelProvider === 'cloudflare') {
+    sanitized.tunnelProvider = 'cloudflare';
+  }
+  if (sanitized.runtimeMode === 'normal' && typeof obj.turnConfigured === 'boolean') {
+    sanitized.turnConfigured = obj.turnConfigured;
   }
   return sanitized;
 }

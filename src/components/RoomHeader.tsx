@@ -16,7 +16,7 @@ import {
   Video,
   VideoOff,
 } from 'lucide-react';
-import type { ConnectionStatus, Participant, RoomMode } from '../domain/types';
+import type { ConnectionStatus, Participant, RoomMode, RuntimeInfo } from '../domain/types';
 import { useDismissable } from '../hooks/useDismissable';
 import { LOCALE_OPTIONS, useI18n } from '../i18n';
 import {
@@ -29,6 +29,8 @@ import { useTheme } from '../theme/ThemeContext';
 interface RoomHeaderProps {
   roomCode: string;
   roomMode?: RoomMode;
+  tunnelActive?: boolean;
+  tunnelProvider?: RuntimeInfo['tunnelProvider'];
   connectionStatus?: ConnectionStatus;
   participants: Participant[];
   copiedCode: boolean;
@@ -51,6 +53,8 @@ interface RoomHeaderProps {
 export function RoomHeader({
   roomCode,
   roomMode = 'normal',
+  tunnelActive = false,
+  tunnelProvider,
   connectionStatus,
   participants,
   copiedCode,
@@ -194,6 +198,16 @@ export function RoomHeader({
               >
                 <Lock className="h-3 w-3" aria-hidden="true" />
                 <span>{t.torMode.badge}</span>
+              </span>
+            )}
+            {!isTorMode && tunnelActive && (
+              <span
+                data-tunnel-active="true"
+                data-tunnel-provider={tunnelProvider ?? 'cloudflare'}
+                className="inline-flex items-center gap-1 rounded-full border border-sky-200 dark:border-sky-500/35 bg-sky-50 dark:bg-sky-500/15 px-2 py-0.5 text-[11px] font-semibold leading-none text-sky-800 dark:text-sky-200"
+              >
+                <Globe className="h-3 w-3" aria-hidden="true" />
+                <span>{t.tunnel.badge(tunnelProvider === 'cloudflare' || !tunnelProvider ? 'Cloudflare' : tunnelProvider)}</span>
               </span>
             )}
           </div>

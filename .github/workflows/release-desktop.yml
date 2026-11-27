@@ -1,0 +1,307 @@
+name: Release PULSO Desktop
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0; defaults to ref name)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.flavor }} (${{ matrix.platform.slug }})
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor:
+          - tor
+          - local
+        platform:
+          - os: macos-latest
+            slug: macos-arm64
+            node_arch: arm64
+            rust_triple: aarch64-apple-darwin
+            tor_target: macos-aarch64
+            cloudflared_target: darwin-arm64
+            bundles: app
+          - os: macos-latest
+            slug: macos-x64
+            node_arch: x64
+            rust_triple: x86_64-apple-darwin
+            tor_target: macos-x86_64
+            cloudflared_target: darwin-amd64
+            bundles: app
+          - os: windows-latest
+            slug: windows-x64
+            node_arch: x64
+            rust_triple: x86_64-pc-windows-msvc
+            tor_target: windows-x86_64
+            cloudflared_target: windows-amd64
+            bundles: nsis
+          - os: ubuntu-22.04
+            slug: linux-x64
+            node_arch: x64
+            rust_triple: x86_64-unknown-linux-gnu
+            tor_target: linux-x86_64
+            cloudflared_target: linux-amd64
+            bundles: appimage,deb
+          - os: ubuntu-24.04-arm
+            slug: linux-arm64
+            node_arch: arm64
+            rust_triple: aarch64-unknown-linux-gnu
+            tor_target: linux-aarch64
+            cloudflared_target: linux-arm64
+            bundles: appimage,deb
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve release version
+        id: prep
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          if [ -z "${TAG}" ] || [[ "${TAG}" != v* ]]; then
+            VERSION="$(node -p "require('./package.json').version")"
+          else
+            VERSION="${TAG#v}"
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "tag=v${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Setup Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          architecture: ${{ matrix.platform.node_arch }}
+          cache: npm
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.rust_triple }}
+
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux Tauri build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            pkg-config \
+            zip
+
+      - name: Ensure gpg is on PATH on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Test-Path "C:\Program Files\Git\usr\bin\gpg.exe") {
+            "C:\Program Files\Git\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+
+      - name: Install npm dependencies and postject for Node 22 SEA
+        run: |
+          npm ci
+          npm install --no-save postject
+
+      - name: Fetch and verify Tor Expert Bundle (PGP + SHA-256)
+        if: matrix.flavor == 'tor'
+        run: node scripts/fetch-tor-bundle.mjs --target ${{ matrix.platform.tor_target }} --require-pgp
+
+      - name: Fetch and verify cloudflared binary (SHA-256)
+        if: matrix.flavor == 'local'
+        run: node scripts/fetch-cloudflared.mjs --target ${{ matrix.platform.cloudflared_target }}
+
+      - name: Build frontend, server, desktop UI, and Node.js 22 SEA sidecar
+        run: |
+          npm run build
+          npm run build:desktop-ui
+          node scripts/build-sidecar.mjs --target ${{ matrix.platform.rust_triple }}
+          node scripts/package-desktop.mjs --flavor ${{ matrix.flavor }} --target ${{ matrix.platform.rust_triple }} --version ${{ steps.prep.outputs.version }}
+
+      - name: Configure optional Apple signing identity (fallback to ad-hoc '-')
+        id: apple_sign
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [ -n "${APPLE_CERTIFICATE}" ] && [ -n "${APPLE_CERTIFICATE_PASSWORD}" ]; then
+            echo "signing_identity=${APPLE_SIGNING_IDENTITY}" >> "${GITHUB_OUTPUT}"
+            echo "ad_hoc=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "signing_identity=-" >> "${GITHUB_OUTPUT}"
+            echo "ad_hoc=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Build Tauri bundles
+        uses: tauri-apps/tauri-action@v0
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ steps.apple_sign.outputs.signing_identity }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        with:
+          projectPath: .
+          args: --config src-tauri/tauri.${{ matrix.flavor }}.conf.json --target ${{ matrix.platform.rust_triple }} --features flavor-${{ matrix.flavor }} --bundles ${{ matrix.platform.bundles }}
+
+      - name: Verify macOS ad-hoc signatures when official Apple certificate is absent
+        if: runner.os == 'macOS' && steps.apple_sign.outputs.ad_hoc == 'true'
+        shell: bash
+        run: |
+          APP_PATH="$(find "src-tauri/target/${{ matrix.platform.rust_triple }}/release/bundle/macos" -maxdepth 1 -name '*.app' | head -n 1)"
+          if [ -n "${APP_PATH}" ]; then
+            node scripts/package-desktop.mjs --flavor ${{ matrix.flavor }} --verify-app "${APP_PATH}"
+          fi
+
+      - name: Package macOS .dmg from signed .app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          APP_PATH="$(find "src-tauri/target/${{ matrix.platform.rust_triple }}/release/bundle/macos" -maxdepth 1 -name '*.app' | head -n 1)"
+          if [ -z "${APP_PATH}" ]; then
+            echo "Expected signed .app bundle was not found" >&2
+            exit 1
+          fi
+          mkdir -p dist-packages
+          node scripts/package-desktop.mjs \
+            --flavor ${{ matrix.flavor }} \
+            --target ${{ matrix.platform.rust_triple }} \
+            --version ${{ steps.prep.outputs.version }} \
+            --create-dmg "${APP_PATH}" \
+            --out-dmg "dist-packages/pulso-${{ matrix.flavor }}-v${{ steps.prep.outputs.version }}-${{ matrix.platform.slug }}.dmg"
+
+      - name: Package Windows portable .zip archive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $releaseDir = "src-tauri/target/${{ matrix.platform.rust_triple }}/release"
+          $portableStage = Join-Path $env:RUNNER_TEMP "pulso-portable-${{ matrix.flavor }}"
+          New-Item -ItemType Directory -Force -Path $portableStage | Out-Null
+          Copy-Item (Join-Path $releaseDir "pulso-desktop.exe") (Join-Path $portableStage "pulso-desktop.exe")
+          Copy-Item "src-tauri/binaries/pulso-sidecar-${{ matrix.platform.rust_triple }}.exe" (Join-Path $portableStage "pulso-sidecar.exe")
+          Copy-Item -Recurse "dist" (Join-Path $portableStage "dist")
+          Copy-Item "LICENSE" (Join-Path $portableStage "LICENSE")
+          if ("${{ matrix.flavor }}" -eq "tor") {
+            Copy-Item -Recurse "src-tauri/resources/tor" (Join-Path $portableStage "tor")
+          } else {
+            Copy-Item "src-tauri/binaries/cloudflared-${{ matrix.platform.rust_triple }}.exe" (Join-Path $portableStage "cloudflared.exe")
+          }
+          node scripts/package-desktop.mjs --flavor ${{ matrix.flavor }} --target ${{ matrix.platform.rust_triple }} --version ${{ steps.prep.outputs.version }} --portable-dir $portableStage --out-zip "dist-packages/pulso-${{ matrix.flavor }}-v${{ steps.prep.outputs.version }}-${{ matrix.platform.slug }}.zip"
+
+      - name: Collect and standardize release artifact names
+        shell: bash
+        run: |
+          node scripts/release-artifacts.mjs \
+            --collect \
+            --input-dir "src-tauri/target/${{ matrix.platform.rust_triple }}/release/bundle" \
+            --input-dir "dist-packages" \
+            --output-dir "normalized-artifacts" \
+            --flavor "${{ matrix.flavor }}" \
+            --target "${{ matrix.platform.rust_triple }}" \
+            --version "${{ steps.prep.outputs.version }}"
+
+      - name: Upload normalized artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulso-${{ matrix.flavor }}-${{ matrix.platform.slug }}
+          path: normalized-artifacts/*
+          if-no-files-found: error
+
+  release:
+    name: Sign, Attest, Publish & Mirror Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Resolve release version
+        id: prep
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          if [ -z "${TAG}" ] || [[ "${TAG}" != v* ]]; then
+            VERSION="$(node -p "require('./package.json').version")"
+          else
+            VERSION="${TAG#v}"
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "tag=v${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: pulso-*
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS, optional SHA256SUMS.asc & pulso-release-key.asc, and release-manifest.json
+        env:
+          PULSO_PGP_PRIVATE_KEY: ${{ secrets.PULSO_PGP_PRIVATE_KEY }}
+          PULSO_PGP_PASSPHRASE: ${{ secrets.PULSO_PGP_PASSPHRASE }}
+        run: |
+          node scripts/release-artifacts.mjs \
+            --dir release-assets \
+            --version "${{ steps.prep.outputs.version }}" \
+            --repo "${{ github.repository }}"
+          node scripts/release-artifacts.mjs --verify --dir release-assets
+
+      - name: Attest build provenance for desktop artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release-assets/pulso-*
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.prep.outputs.tag }}
+          name: PULSO ${{ steps.prep.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            release-assets/*
+
+      - name: Mirror PULSO Tor artifacts and checksums to Codeberg / GitLab
+        env:
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+          CODEBERG_REPO: ${{ secrets.CODEBERG_REPO }}
+          CODEBERG_URL: ${{ secrets.CODEBERG_URL }}
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GITLAB_PROJECT: ${{ secrets.GITLAB_PROJECT }}
+          GITLAB_URL: ${{ secrets.GITLAB_URL }}
+        run: |
+          node scripts/mirror-release.mjs \
+            --dir release-assets \
+            --version "${{ steps.prep.outputs.version }}"

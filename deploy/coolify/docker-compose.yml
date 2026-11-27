@@ -1,0 +1,77 @@
+# PULSO Servidor — Template 1-Click para Coolify (Docker Compose em VPS)
+#
+# O Coolify provisiona TLS automático (HTTPS + wss://) via proxy reverso integrado.
+# Libere no firewall da VPS para o servidor TURN (Chamada de Vídeo atrás de NAT):
+#   - 3478/tcp e 3478/udp (STUN/TURN)
+#   - 49160-49300/udp (mídia relay coturn)
+
+services:
+  pulso:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: ${PULSO_IMAGE:-ghcr.io/gugaucb/pulso:latest}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    expose:
+      - "3001"
+    environment:
+      SERVICE_FQDN_PULSO_3001: "${SERVICE_FQDN_PULSO_3001:-}"
+      PORT: "3001"
+      HOST: "0.0.0.0"
+      TRUST_PROXY: "true"
+      STUN_URLS: "${STUN_URLS-stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302}"
+      TURN_URLS: "${TURN_URLS:-turn:${TURN_DOMAIN:-${SERVICE_FQDN_PULSO:-turn.exemplo.com}}:3478?transport=udp,turn:${TURN_DOMAIN:-${SERVICE_FQDN_PULSO:-turn.exemplo.com}}:3478?transport=tcp}"
+      TURN_SECRET: "${TURN_SECRET:-${SERVICE_PASSWORD_TURN}}"
+      TURN_TTL_SECONDS: "${TURN_TTL_SECONDS:-3600}"
+      PULSO_INACTIVITY_MS: "${PULSO_INACTIVITY_MS:-3600000}"
+      PULSO_GRACE_WINDOW_MS: "${PULSO_GRACE_WINDOW_MS:-30000}"
+      PULSO_MAX_ROOMS: "${PULSO_MAX_ROOMS:-1000}"
+
+  coturn:
+    image: coturn/coturn:4.6-alpine
+    restart: unless-stopped
+    network_mode: host
+    read_only: true
+    tmpfs:
+      - /var/tmp:rw,noexec,nosuid,nodev,size=16m
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DETECT_EXTERNAL_IP: "${DETECT_EXTERNAL_IP:-yes}"
+      DETECT_RELAY_IP: "${DETECT_RELAY_IP:-yes}"
+    command:
+      - -n
+      - --log-file=/dev/null
+      - --no-stdout-log
+      - --no-cli
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49300
+      - --realm=${TURN_REALM:-${SERVICE_FQDN_PULSO:-pulso.local}}
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET:-${SERVICE_PASSWORD_TURN}}
+      - --fingerprint
+      - --no-tlsv1
+      - --no-tlsv1_1
+      - --no-loopback-peers
+      - --no-multicast-peers
+      - --denied-peer-ip=0.0.0.0-0.255.255.255
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=100.64.0.0-100.127.255.255
+      - --denied-peer-ip=127.0.0.0-127.255.255.255
+      - --denied-peer-ip=169.254.0.0-169.254.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
+      - --denied-peer-ip=::1
+      - --denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+      - --denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff

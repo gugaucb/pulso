@@ -1,0 +1,50 @@
+# =============================================================================
+# PULSO Servidor — Render Blueprint (`render.yaml`)
+# =============================================================================
+# IMPORTANTE SOBRE REDE E CHAMADA DE VÍDEO NO RENDER:
+# 1. Web Services no Render são proxies HTTP/HTTPS/WebSocket (TCP). O Render NÃO
+#    expõe portas UDP arbitrárias para hospedar `coturn` na mesma Instância.
+# 2. Mensagem Efêmera em texto e Chamada de Vídeo P2P via STUN funcionam
+#    imediatamente. Porém, se ambos os Participantes estiverem atrás de NAT
+#    simétrico/firewall restritivo, a Chamada de Vídeo exige um TURN externo:
+#      - Opção A (self-hosted): rode apenas o serviço `coturn` de
+#        `deploy/docker-compose.yml` em uma VPS e configure `TURN_URLS` + `TURN_SECRET`.
+#      - Opção B (gerenciado): use ex. Cloudflare Realtime TURN configurando
+#        `TURN_URLS`, `TURN_USERNAME` e `TURN_CREDENTIAL`.
+#        (Nota: o provedor TURN externo observa IPs de mídia e volume de tráfego;
+#        o áudio/vídeo continua cifrado ponta a ponta via DTLS/SRTP.)
+# 3. Como todas as Salas vivem apenas em RAM, o plano `free` do Render entra em
+#    spin-down após ~15 min sem tráfego e descarta Salas inativas. Recomenda-se
+#    `starter` (ou superior) para estabilidade contínua.
+# =============================================================================
+
+services:
+  - type: web
+    name: pulso
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /healthz
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: TRUST_PROXY
+        value: "true"
+      - key: STUN_URLS
+        value: stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302
+      - key: TURN_URLS
+        sync: false
+      - key: TURN_SECRET
+        sync: false
+      - key: TURN_TTL_SECONDS
+        value: "3600"
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false
+      - key: PULSO_INACTIVITY_MS
+        value: "3600000"
+      - key: PULSO_GRACE_WINDOW_MS
+        value: "30000"
+      - key: PULSO_MAX_ROOMS
+        value: "1000"
