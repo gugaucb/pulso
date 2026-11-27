@@ -55,7 +55,7 @@ Run the command for your platform inside the download folder:
 When `gh` is available on an online machine:
 
 ```bash
-gh attestation verify ./pulso-tor-v0.1.0-linux-x64.AppImage --owner pulso-app
+gh attestation verify ./pulso-tor-v0.1.0-linux-x64.AppImage --owner gugaucb
 ```
 
 ---

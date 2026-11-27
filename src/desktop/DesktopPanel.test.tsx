@@ -31,7 +31,7 @@ function createMockBridge(
   const openInBrowser = vi.fn().mockResolvedValue(undefined);
   const checkUpdatesManual = vi.fn().mockResolvedValue({
     latestVersion: '0.2.0',
-    releaseUrl: 'https://github.com/pulso-app/pulso/releases/tag/v0.2.0',
+    releaseUrl: 'https://github.com/gugaucb/pulso/releases/tag/v0.2.0',
     updateAvailable: true,
   });
 
@@ -317,7 +317,7 @@ describe('DesktopPanel', () => {
     await waitFor(() => {
       expect(mock.checkUpdatesManual).toHaveBeenCalledTimes(1);
       expect(mock.openInBrowser).toHaveBeenCalledWith(
-        'https://github.com/pulso-app/pulso/releases/tag/v0.2.0',
+        'https://github.com/gugaucb/pulso/releases/tag/v0.2.0',
       );
       expect(screen.getByText(/nova versão v0\.2\.0 disponível/i)).toBeInTheDocument();
     });
@@ -332,24 +332,24 @@ describe('DesktopPanel', () => {
       ok: true,
       json: async () => ({
         tag_name: 'v0.3.0',
-        html_url: 'https://github.com/pulso-app/pulso/releases/tag/v0.3.0',
+        html_url: 'https://github.com/gugaucb/pulso/releases/tag/v0.3.0',
       }),
     });
 
     const result = await fetchLatestReleaseManifest(
       '0.1.0',
-      'https://api.github.com/repos/pulso-app/pulso/releases/latest',
+      'https://api.github.com/repos/gugaucb/pulso/releases/latest',
       fetchMock as unknown as typeof fetch,
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.github.com/repos/pulso-app/pulso/releases/latest',
+      'https://api.github.com/repos/gugaucb/pulso/releases/latest',
       expect.objectContaining({ method: 'GET' }),
     );
     expect(result).toEqual({
       latestVersion: '0.3.0',
-      releaseUrl: 'https://github.com/pulso-app/pulso/releases/tag/v0.3.0',
+      releaseUrl: 'https://github.com/gugaucb/pulso/releases/tag/v0.3.0',
       updateAvailable: true,
     });
   });

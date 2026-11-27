@@ -373,7 +373,7 @@ mod tests {
     fn browser_url_allowlist_permits_only_loopback_http_and_https() {
         assert!(is_allowed_browser_url("http://127.0.0.1:41234"));
         assert!(is_allowed_browser_url("http://127.0.0.1:8080/"));
-        assert!(is_allowed_browser_url("https://github.com/pulso-app/pulso/releases"));
+        assert!(is_allowed_browser_url("https://github.com/gugaucb/pulso/releases"));
         assert!(!is_allowed_browser_url("file:///etc/passwd"));
         assert!(!is_allowed_browser_url("javascript:alert(1)"));
         assert!(!is_allowed_browser_url("http://192.168.1.10:3000"));

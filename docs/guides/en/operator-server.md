@@ -4,7 +4,7 @@
 
 This guide helps an **Operator** deploy and maintain a self-hosted **PULSO Server** **Instance** (**Normal Mode**) on a VPS or via 1-click PaaS templates.
 
-The official `ghcr.io/pulso-app/pulso` container image (multi-arch `linux/amd64` and `linux/arm64`) runs on `gcr.io/distroless/nodejs22-debian12:nonroot` (UID `65532`), with `read_only: true`, `cap_drop: [ALL]`, and native health checks on `GET /healthz`.
+The official `ghcr.io/gugaucb/pulso` container image (multi-arch `linux/amd64` and `linux/arm64`) runs on `gcr.io/distroless/nodejs22-debian12:nonroot` (UID `65532`), with `read_only: true`, `cap_drop: [ALL]`, and native health checks on `GET /healthz`.
 
 ---
 

@@ -4,7 +4,7 @@
 
 Este guia orienta o **Operador** na publicação e manutenção de uma **Instância** do **PULSO Servidor** (**Modo Normal**) em servidor próprio (VPS) ou em plataformas PaaS em 1 clique.
 
-A imagem oficial `ghcr.io/pulso-app/pulso` (multi-arquitetura `linux/amd64` e `linux/arm64`) usa `gcr.io/distroless/nodejs22-debian12:nonroot` (UID `65532`), sistema de arquivos somente leitura (`read_only: true`), descarte de capacidades (`cap_drop: [ALL]`) e verificação nativa em `GET /healthz`.
+A imagem oficial `ghcr.io/gugaucb/pulso` (multi-arquitetura `linux/amd64` e `linux/arm64`) usa `gcr.io/distroless/nodejs22-debian12:nonroot` (UID `65532`), sistema de arquivos somente leitura (`read_only: true`), descarte de capacidades (`cap_drop: [ALL]`) e verificação nativa em `GET /healthz`.
 
 ---
 

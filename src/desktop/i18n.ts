@@ -118,7 +118,7 @@ const PT_BR: DesktopDictionary = {
     zeroClearnetNotice: 'Zero requisições na clearnet: este aplicativo nunca consulta atualizações em segundo plano.',
     torVersionLabel: (version) => `Tor ${version}`,
     manualUpdateInstruction: 'Para verificar novas versões com segurança, abra a página oficial de releases manualmente pelo Tor Browser:',
-    manualUpdateMirrorUrl: 'https://github.com/pulso-app/pulso/releases',
+    manualUpdateMirrorUrl: 'https://github.com/gugaucb/pulso/releases',
     phases: {
       starting: 'Preparando daemon Tor isolado…',
       conn_pt: 'Conectando à ponte anti-censura…',
@@ -199,7 +199,7 @@ const EN: DesktopDictionary = {
     zeroClearnetNotice: 'Zero clearnet requests: this app never checks for updates in the background.',
     torVersionLabel: (version) => `Tor ${version}`,
     manualUpdateInstruction: 'To check for new releases safely, open the official releases page manually inside Tor Browser:',
-    manualUpdateMirrorUrl: 'https://github.com/pulso-app/pulso/releases',
+    manualUpdateMirrorUrl: 'https://github.com/gugaucb/pulso/releases',
     phases: {
       starting: 'Preparing isolated Tor daemon…',
       conn_pt: 'Connecting to anti-censorship bridge…',
@@ -280,7 +280,7 @@ const ES: DesktopDictionary = {
     zeroClearnetNotice: 'Cero peticiones en clearnet: esta aplicación nunca busca actualizaciones en segundo plano.',
     torVersionLabel: (version) => `Tor ${version}`,
     manualUpdateInstruction: 'Para comprobar nuevas versiones de forma segura, abre manualmente la página de releases en Tor Browser:',
-    manualUpdateMirrorUrl: 'https://github.com/pulso-app/pulso/releases',
+    manualUpdateMirrorUrl: 'https://github.com/gugaucb/pulso/releases',
     phases: {
       starting: 'Preparando daemon Tor aislado…',
       conn_pt: 'Conectando al puente anti-censura…',
@@ -361,7 +361,7 @@ const ZH_CN: DesktopDictionary = {
     zeroClearnetNotice: '零明网请求：此应用绝不会在后台检查更新。',
     torVersionLabel: (version) => `Tor ${version}`,
     manualUpdateInstruction: '如需安全检查新版本，请通过 Tor Browser 手动打开官方发布页面：',
-    manualUpdateMirrorUrl: 'https://github.com/pulso-app/pulso/releases',
+    manualUpdateMirrorUrl: 'https://github.com/gugaucb/pulso/releases',
     phases: {
       starting: '正在准备隔离的 Tor 守护进程…',
       conn_pt: '正在连接抗审查网桥…',

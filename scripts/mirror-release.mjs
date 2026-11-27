@@ -209,7 +209,7 @@ export function resolveMirrorTargets({
   const wantsGitlab = provider === 'all' || provider === 'gitlab';
 
   const cbToken = env.CODEBERG_TOKEN?.trim() || '';
-  const cbRepo = (codebergRepo || env.CODEBERG_REPO || (dryRun ? 'pulso-app/pulso' : '')).trim();
+  const cbRepo = (codebergRepo || env.CODEBERG_REPO || (dryRun ? 'gugaucb/pulso' : '')).trim();
   const cbBase = (codebergUrl || env.CODEBERG_URL || DEFAULT_CODEBERG_URL).trim();
 
   if (wantsCodeberg && cbRepo && (dryRun || cbToken)) {
@@ -220,7 +220,7 @@ export function resolveMirrorTargets({
   const glProject = (
     gitlabProject ||
     env.GITLAB_PROJECT ||
-    (dryRun ? 'pulso-app/pulso' : '')
+    (dryRun ? 'gugaucb/pulso' : '')
   ).trim();
   const glBase = (gitlabUrl || env.GITLAB_URL || DEFAULT_GITLAB_URL).trim();
 

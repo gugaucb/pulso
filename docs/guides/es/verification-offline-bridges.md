@@ -55,7 +55,7 @@ Ejecuta el comando correspondiente dentro de la carpeta de descarga:
 En un equipo con acceso a internet y `gh` instalado:
 
 ```bash
-gh attestation verify ./pulso-tor-v0.1.0-linux-x64.AppImage --owner pulso-app
+gh attestation verify ./pulso-tor-v0.1.0-linux-x64.AppImage --owner gugaucb
 ```
 
 ---

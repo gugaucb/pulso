@@ -254,7 +254,7 @@ describe('scripts/release-artifacts.mjs', () => {
     it('builds release-manifest.json compatible with fetchLatestReleaseManifest in tauriBridge.ts', async () => {
       const manifest = buildReleaseManifest({
         version: 'v0.2.0',
-        repository: 'pulso-app/pulso',
+        repository: 'gugaucb/pulso',
         publishedAt: '2026-11-27T00:00:00Z',
         entries: [
           {
@@ -272,7 +272,7 @@ describe('scripts/release-artifacts.mjs', () => {
 
       expect(manifest.tag_name).toBe('v0.2.0');
       expect(manifest.version).toBe('0.2.0');
-      expect(manifest.html_url).toBe('https://github.com/pulso-app/pulso/releases/tag/v0.2.0');
+      expect(manifest.html_url).toBe('https://github.com/gugaucb/pulso/releases/tag/v0.2.0');
       expect(manifest.assets).toEqual([
         {
           name: 'pulso-local-v0.2.0-macos-arm64.dmg',
@@ -283,7 +283,7 @@ describe('scripts/release-artifacts.mjs', () => {
           sha256: 'a'.repeat(64),
           size: 1024,
           download_url:
-            'https://github.com/pulso-app/pulso/releases/download/v0.2.0/pulso-local-v0.2.0-macos-arm64.dmg',
+            'https://github.com/gugaucb/pulso/releases/download/v0.2.0/pulso-local-v0.2.0-macos-arm64.dmg',
         },
         {
           name: 'pulso-tor-v0.2.0-linux-x64.AppImage',
@@ -294,7 +294,7 @@ describe('scripts/release-artifacts.mjs', () => {
           sha256: 'b'.repeat(64),
           size: 2048,
           download_url:
-            'https://github.com/pulso-app/pulso/releases/download/v0.2.0/pulso-tor-v0.2.0-linux-x64.AppImage',
+            'https://github.com/gugaucb/pulso/releases/download/v0.2.0/pulso-tor-v0.2.0-linux-x64.AppImage',
         },
       ]);
 
@@ -307,12 +307,12 @@ describe('scripts/release-artifacts.mjs', () => {
       );
       const parsedByBridge = await fetchLatestReleaseManifest(
         '0.1.0',
-        'https://github.com/pulso-app/pulso/releases/latest/download/release-manifest.json',
+        'https://github.com/gugaucb/pulso/releases/latest/download/release-manifest.json',
         mockFetch as unknown as typeof fetch,
       );
       expect(parsedByBridge).toEqual({
         latestVersion: '0.2.0',
-        releaseUrl: 'https://github.com/pulso-app/pulso/releases/tag/v0.2.0',
+        releaseUrl: 'https://github.com/gugaucb/pulso/releases/tag/v0.2.0',
         updateAvailable: true,
       });
     });
@@ -324,7 +324,7 @@ describe('scripts/release-artifacts.mjs', () => {
       const dryResult = await generateReleaseOutputs({
         dir: root,
         version: '0.1.0',
-        repository: 'pulso-app/pulso',
+        repository: 'gugaucb/pulso',
         dryRun: true,
       });
 
@@ -340,12 +340,12 @@ describe('scripts/release-artifacts.mjs', () => {
         '--version',
         'v0.1.0',
         '--repo',
-        'pulso-app/pulso',
+        'gugaucb/pulso',
         '--dry-run',
       ]);
       expect(opts.dir).toBe(path.resolve(root));
       expect(opts.version).toBe('v0.1.0');
-      expect(opts.repo).toBe('pulso-app/pulso');
+      expect(opts.repo).toBe('gugaucb/pulso');
       expect(opts.dryRun).toBe(true);
     });
   });

@@ -320,13 +320,13 @@ export async function signSha256Sums({
  */
 export function buildReleaseManifest({
   version,
-  repository = process.env.GITHUB_REPOSITORY || 'pulso-app/pulso',
+  repository = process.env.GITHUB_REPOSITORY || 'gugaucb/pulso',
   entries = [],
   publishedAt = new Date().toISOString(),
 }) {
   const normalizedVersion = normalizeVersion(version);
   const tag = formatReleaseTag(normalizedVersion);
-  const repoSlug = String(repository).trim().replace(/^\/+|\/+$/g, '') || 'pulso-app/pulso';
+  const repoSlug = String(repository).trim().replace(/^\/+|\/+$/g, '') || 'gugaucb/pulso';
   const htmlUrl = `https://github.com/${repoSlug}/releases/tag/${tag}`;
 
   const assets = entries.map((entry) => {
@@ -358,7 +358,7 @@ export function buildReleaseManifest({
 export async function generateReleaseOutputs({
   dir,
   version,
-  repository = process.env.GITHUB_REPOSITORY || 'pulso-app/pulso',
+  repository = process.env.GITHUB_REPOSITORY || 'gugaucb/pulso',
   privateKeyArmored = process.env.PULSO_PGP_PRIVATE_KEY ?? '',
   passphrase = process.env.PULSO_PGP_PASSPHRASE ?? '',
   execFileSyncFn = execFileSync,
@@ -424,7 +424,7 @@ export function parseArgs(argv) {
     flavor: null,
     target: null,
     version: readDefaultPackageVersion(),
-    repo: process.env.GITHUB_REPOSITORY || 'pulso-app/pulso',
+    repo: process.env.GITHUB_REPOSITORY || 'gugaucb/pulso',
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -473,7 +473,7 @@ Options:
   --target <triple|slug>     Target triple or slug for --collect
   --dir <dir>                Release assets directory (default: release-assets)
   --version <semver>         Release version (default: package.json version)
-  --repo <owner/repo>        GitHub repository slug (default: GITHUB_REPOSITORY or pulso-app/pulso)
+  --repo <owner/repo>        GitHub repository slug (default: GITHUB_REPOSITORY or gugaucb/pulso)
   --verify                   Verify existing SHA256SUMS in --dir
   --dry-run                  Print planned output without writing files or invoking gpg
   -h, --help                 Show this help message`);

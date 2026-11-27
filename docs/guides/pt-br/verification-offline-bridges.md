@@ -55,7 +55,7 @@ Execute o comando correspondente ao seu sistema na pasta onde estão os arquivos
 Quando tiver o `gh` instalado e acesso à release oficial:
 
 ```bash
-gh attestation verify ./pulso-tor-v0.1.0-linux-x64.AppImage --owner pulso-app
+gh attestation verify ./pulso-tor-v0.1.0-linux-x64.AppImage --owner gugaucb
 ```
 
 ---

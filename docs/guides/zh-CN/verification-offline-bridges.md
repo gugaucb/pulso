@@ -55,7 +55,7 @@ gpg --verify SHA256SUMS.asc SHA256SUMS
 在已安装 `gh` 的联网设备上：
 
 ```bash
-gh attestation verify ./pulso-tor-v0.1.0-linux-x64.AppImage --owner pulso-app
+gh attestation verify ./pulso-tor-v0.1.0-linux-x64.AppImage --owner gugaucb
 ```
 
 ---

@@ -9,8 +9,8 @@ import type {
 } from './types';
 
 export const DEFAULT_RELEASES_API_URL =
-  'https://api.github.com/repos/pulso-app/pulso/releases/latest';
-export const DEFAULT_RELEASES_PAGE_URL = 'https://github.com/pulso-app/pulso/releases';
+  'https://api.github.com/repos/gugaucb/pulso/releases/latest';
+export const DEFAULT_RELEASES_PAGE_URL = 'https://github.com/gugaucb/pulso/releases';
 
 interface TauriCoreApi {
   invoke: <T = unknown>(cmd: string, args?: Record<string, unknown>) => Promise<T>;

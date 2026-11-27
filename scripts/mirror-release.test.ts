@@ -62,22 +62,22 @@ describe('scripts/mirror-release.mjs', () => {
 
     const codebergPlan = buildCodebergMirrorPlan({
       baseUrl: 'https://codeberg.org',
-      repo: 'pulso-app/pulso',
+      repo: 'gugaucb/pulso',
       version: '0.1.0',
       files: ['SHA256SUMS', 'SHA256SUMS.asc', 'pulso-tor-v0.1.0-macos-arm64.dmg'],
     });
-    expect(codebergPlan.releaseCreateUrl).toBe('https://codeberg.org/api/v1/repos/pulso-app/pulso/releases');
+    expect(codebergPlan.releaseCreateUrl).toBe('https://codeberg.org/api/v1/repos/gugaucb/pulso/releases');
     expect(codebergPlan.releasePayload.tag_name).toBe('v0.1.0');
     expect(codebergPlan.files).not.toContain('pulso-local-v0.1.0-macos-arm64.dmg');
 
     const gitlabPlan = buildGitlabMirrorPlan({
       baseUrl: 'https://gitlab.com',
-      project: 'pulso-app/pulso',
+      project: 'gugaucb/pulso',
       version: 'v0.1.0',
       files: ['SHA256SUMS', 'SHA256SUMS.asc', 'pulso-tor-v0.1.0-macos-arm64.dmg'],
     });
     expect(gitlabPlan.releaseCreateUrl).toBe(
-      'https://gitlab.com/api/v4/projects/pulso-app%2Fpulso/releases',
+      'https://gitlab.com/api/v4/projects/gugaucb%2Fpulso/releases',
     );
     expect(gitlabPlan.packageUploads).toHaveLength(3);
     expect(gitlabPlan.releasePayload.assets.links).toHaveLength(3);
@@ -87,8 +87,8 @@ describe('scripts/mirror-release.mjs', () => {
       dir: root,
       version: '0.1.0',
       provider: 'all',
-      codebergRepo: 'pulso-app/pulso',
-      gitlabProject: 'pulso-app/pulso',
+      codebergRepo: 'gugaucb/pulso',
+      gitlabProject: 'gugaucb/pulso',
       dryRun: true,
       fetchFn: fetchSpy as unknown as typeof fetch,
     });
@@ -137,7 +137,7 @@ describe('scripts/mirror-release.mjs', () => {
       provider: 'codeberg',
       env: {
         CODEBERG_TOKEN: 'cb-token',
-        CODEBERG_REPO: 'pulso-app/pulso',
+        CODEBERG_REPO: 'gugaucb/pulso',
       },
       dryRun: false,
       fetchFn: mockFetch as unknown as typeof fetch,
@@ -160,12 +160,12 @@ describe('scripts/mirror-release.mjs', () => {
       '--provider',
       'codeberg',
       '--codeberg-repo',
-      'pulso-app/pulso',
+      'gugaucb/pulso',
       '--dry-run',
     ]);
     expect(opts.version).toBe('v0.1.0');
     expect(opts.provider).toBe('codeberg');
-    expect(opts.codebergRepo).toBe('pulso-app/pulso');
+    expect(opts.codebergRepo).toBe('gugaucb/pulso');
     expect(opts.dryRun).toBe(true);
   });
 });
