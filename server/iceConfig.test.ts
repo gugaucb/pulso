@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { buildIceServers } from './iceConfig';
+import { buildIceServers, hasTurnConfigured } from './iceConfig';
 
 describe('buildIceServers', () => {
   it('returns default Google STUN servers when no custom STUN_URLS or TURN_URLS are configured', () => {
@@ -91,5 +91,23 @@ describe('buildIceServers', () => {
       .update(servers[0].username!)
       .digest('base64');
     expect(servers[0].credential).toBe(expectedCred);
+  });
+});
+
+describe('hasTurnConfigured', () => {
+  it('detects turn: and turns: URLs while returning false for STUN-only or empty lists', () => {
+    expect(hasTurnConfigured([])).toBe(false);
+    expect(
+      hasTurnConfigured([
+        { urls: ['stun:stun.l.google.com:19302', 'stun:turn.example.org:3478'] },
+      ]),
+    ).toBe(false);
+    expect(hasTurnConfigured([{ urls: 'turn:turn.example.org:3478?transport=udp' }])).toBe(true);
+    expect(
+      hasTurnConfigured([
+        { urls: ['stun:stun.l.google.com:19302'] },
+        { urls: [' TURNS:turn.example.org:5349?transport=tcp '] },
+      ]),
+    ).toBe(true);
   });
 });

@@ -1,8 +1,9 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { accessSync, constants, readdirSync, statSync } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { accessSync, chmodSync, constants, mkdtempSync, readdirSync, statSync } from 'node:fs';
+import { lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import type { Duplex } from 'node:stream';
 import {
@@ -17,6 +18,8 @@ const DEFAULT_POLL_INTERVAL_MS = 25;
 const DEFAULT_STOP_TIMEOUT_MS = 3_000;
 const CONTROL_COMMAND_SHUTDOWN_TIMEOUT_MS = 1_500;
 const MAX_STDERR_CHARS = 2048;
+export const TOR_DATA_DIR_PREFIX = 'pulso-tor-';
+export const DEFAULT_STALE_TOR_DIR_MIN_AGE_MS = 15 * 60 * 1000;
 
 export type TorStatus = 'bootstrapping' | 'ready' | 'error';
 
@@ -221,6 +224,74 @@ async function waitForStreamReady(stream: Duplex, timeoutMs: number): Promise<vo
   );
 }
 
+export interface PurgeStaleTorDataDirsOptions {
+  baseDir?: string;
+  excludePaths?: Iterable<string>;
+  minAgeMs?: number;
+  nowMs?: number;
+}
+
+/**
+ * Creates a unique ephemeral Tor data directory under `os.tmpdir()` with `0o700` permissions.
+ */
+export function createEphemeralTorDataDir(baseTmpDir: string = os.tmpdir()): string {
+  const dir = mkdtempSync(path.join(baseTmpDir, TOR_DATA_DIR_PREFIX));
+  try {
+    chmodSync(dir, 0o700);
+  } catch {
+    // POSIX permissions may be ignored or unsupported on some filesystems (e.g. Windows).
+  }
+  return dir;
+}
+
+/**
+ * Safely deletes stale `pulso-tor-*` directories left behind by crashed processes,
+ * respecting `excludePaths` and `minAgeMs` so active/parallel instances are untouched.
+ */
+export async function purgeStaleTorDataDirs(
+  options: PurgeStaleTorDataDirsOptions = {},
+): Promise<string[]> {
+  const baseDir = path.resolve(options.baseDir ?? os.tmpdir());
+  const minAgeMs =
+    typeof options.minAgeMs === 'number' && Number.isFinite(options.minAgeMs) && options.minAgeMs >= 0
+      ? options.minAgeMs
+      : DEFAULT_STALE_TOR_DIR_MIN_AGE_MS;
+  const nowMs = options.nowMs ?? Date.now();
+  const excluded = new Set(Array.from(options.excludePaths ?? [], (p) => path.resolve(p)));
+
+  let entries;
+  try {
+    entries = await readdir(baseDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const removed: string[] = [];
+  for (const entry of entries) {
+    if (!entry.name.startsWith(TOR_DATA_DIR_PREFIX) || !entry.isDirectory()) {
+      continue;
+    }
+    const candidate = path.resolve(baseDir, entry.name);
+    if (excluded.has(candidate)) {
+      continue;
+    }
+    try {
+      const info = await lstat(candidate);
+      if (!info.isDirectory() || info.isSymbolicLink()) {
+        continue;
+      }
+      if (nowMs - info.mtimeMs < minAgeMs) {
+        continue;
+      }
+      await rm(candidate, { recursive: true, force: true });
+      removed.push(candidate);
+    } catch {
+      // Best-effort cleanup; ignore entries removed concurrently or locked by OS.
+    }
+  }
+  return removed;
+}
+
 /**
  * Manages the ephemeral lifecycle of a local Tor daemon and RAM-only v3 Onion Service.
  */
@@ -244,8 +315,7 @@ export class TorController extends EventEmitter {
   constructor(options: TorControllerOptions) {
     super();
     this.options = options;
-    const baseCwd = options.cwd ?? process.cwd();
-    this.dataDirPath = options.dataDir ?? path.resolve(baseCwd, 'tor_data');
+    this.dataDirPath = options.dataDir ?? createEphemeralTorDataDir();
   }
 
   get status(): TorStatus {
@@ -306,6 +376,8 @@ export class TorController extends EventEmitter {
       this.bootstrapProgress = 0;
       this.currentError = undefined;
       this.emitStatus();
+
+      await purgeStaleTorDataDirs({ excludePaths: [this.dataDirPath] });
 
       const torBinary =
         this.options.torBinaryPath ??

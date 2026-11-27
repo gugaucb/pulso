@@ -2,9 +2,14 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WS_PROTOCOL_VERSION, type ServerWsMessage } from '../shared/protocol';
-import { createServer, resolveDefaultStaticDir } from './app';
+import {
+  createServer,
+  resolveDefaultStaticDir,
+  resolveOriginIp,
+  resolveTrustProxy,
+} from './app';
 import { ManualClock } from './clock';
 
 function nextWsMessage(ws: { once: (event: string, cb: (data: Buffer) => void) => void }): Promise<ServerWsMessage> {
@@ -45,7 +50,7 @@ describe('Fastify app in-process seam (inject + injectWS)', () => {
 
     const runtime = await app.inject({ method: 'GET', url: '/api/runtime' });
     expect(runtime.statusCode).toBe(200);
-    expect(runtime.json()).toEqual({ runtimeMode: 'normal' });
+    expect(runtime.json()).toEqual({ runtimeMode: 'normal', turnConfigured: false });
 
     const spa = await app.inject({ method: 'GET', url: '/room/X9K2-P7M4' });
     expect(spa.statusCode).toBe(200);
@@ -158,5 +163,310 @@ describe('Fastify app in-process seam (inject + injectWS)', () => {
     const [guestJoined, hostPeer] = await Promise.all([guestJoinedPromise, hostPeerPromise]);
     expect(guestJoined.type).toBe('room_joined');
     expect(hostPeer.type).toBe('participant_joined');
+  });
+
+  it('prefers process.env.PULSO_STATIC_DIR in resolveDefaultStaticDir()', () => {
+    const customStaticDir = mkdtempSync(join(tmpdir(), 'pulso-custom-static-'));
+    const previous = process.env.PULSO_STATIC_DIR;
+    cleanups.push(() => {
+      if (previous === undefined) {
+        delete process.env.PULSO_STATIC_DIR;
+      } else {
+        process.env.PULSO_STATIC_DIR = previous;
+      }
+      rmSync(customStaticDir, { recursive: true, force: true });
+    });
+
+    process.env.PULSO_STATIC_DIR = `  ${customStaticDir}  `;
+    expect(resolveDefaultStaticDir()).toBe(customStaticDir);
+  });
+
+  it('auto-populates turnConfigured on GET /api/runtime in normal mode without overwriting explicit values or leaking into tor mode', async () => {
+    const appWithTurn = await createServer({
+      iceServersProvider: () => [{ urls: 'turn:turn.example.org:3478' }],
+      getRuntimeInfo: () => ({
+        runtimeMode: 'normal',
+        publicOrigin: 'https://demo.trycloudflare.com/path',
+        tunnelActive: true,
+        tunnelProvider: 'cloudflare',
+      }),
+    });
+    cleanups.push(() => appWithTurn.close());
+
+    const resWithTurn = await appWithTurn.inject({ method: 'GET', url: '/api/runtime' });
+    expect(resWithTurn.statusCode).toBe(200);
+    expect(resWithTurn.json()).toEqual({
+      runtimeMode: 'normal',
+      publicOrigin: 'https://demo.trycloudflare.com',
+      tunnelActive: true,
+      tunnelProvider: 'cloudflare',
+      turnConfigured: true,
+    });
+
+    const appExplicitFalse = await createServer({
+      iceServersProvider: () => [{ urls: 'turn:turn.example.org:3478' }],
+      runtimeInfo: {
+        runtimeMode: 'normal',
+        turnConfigured: false,
+      },
+    });
+    cleanups.push(() => appExplicitFalse.close());
+
+    const resExplicitFalse = await appExplicitFalse.inject({ method: 'GET', url: '/api/runtime' });
+    expect(resExplicitFalse.statusCode).toBe(200);
+    expect(resExplicitFalse.json()).toEqual({
+      runtimeMode: 'normal',
+      turnConfigured: false,
+    });
+
+    const appTor = await createServer({
+      iceServersProvider: () => [{ urls: 'turn:turn.example.org:3478' }],
+      runtimeInfo: {
+        runtimeMode: 'tor',
+        torStatus: 'bootstrapping',
+      },
+    });
+    cleanups.push(() => appTor.close());
+
+    const resTor = await appTor.inject({ method: 'GET', url: '/api/runtime' });
+    expect(resTor.statusCode).toBe(200);
+    expect(resTor.json()).toEqual({
+      runtimeMode: 'tor',
+      torStatus: 'bootstrapping',
+    });
+  });
+
+  it('resolves TRUST_PROXY from env and enforces loopback-only cf-connecting-ip origin isolation without leaking trust outside tunnel mode', async () => {
+    expect(resolveTrustProxy({})).toBe(false);
+    expect(resolveTrustProxy({ TRUST_PROXY: 'false' })).toBe(false);
+    expect(resolveTrustProxy({ TRUST_PROXY: '0' })).toBe(false);
+    expect(resolveTrustProxy({ TRUST_PROXY: 'true' })).toBe(true);
+    expect(resolveTrustProxy({ TRUST_PROXY: ' TRUE ' })).toBe(true);
+    expect(resolveTrustProxy({ TRUST_PROXY: '1' })).toBe(true);
+
+    // Loopback + tunnelActive=true reads cf-connecting-ip or first hop of x-forwarded-for
+    for (const loopback of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) {
+      expect(
+        resolveOriginIp(
+          {
+            ip: loopback,
+            headers: {
+              'cf-connecting-ip': '203.0.113.10',
+              'x-forwarded-for': '198.51.100.1, 10.0.0.1',
+            },
+            raw: { socket: { remoteAddress: loopback } },
+          },
+          { runtimeMode: 'normal', tunnelActive: true, tunnelProvider: 'cloudflare' },
+        ),
+      ).toBe('203.0.113.10');
+
+      expect(
+        resolveOriginIp(
+          {
+            ip: loopback,
+            headers: {
+              'x-forwarded-for': '198.51.100.1, 10.0.0.1',
+            },
+            raw: { socket: { remoteAddress: loopback } },
+          },
+          { runtimeMode: 'normal', tunnelActive: true },
+        ),
+      ).toBe('198.51.100.1');
+    }
+
+    // Never trust cf-connecting-ip when tunnelActive is false/unset
+    expect(
+      resolveOriginIp(
+        {
+          ip: '127.0.0.1',
+          headers: { 'cf-connecting-ip': '203.0.113.10' },
+          raw: { socket: { remoteAddress: '127.0.0.1' } },
+        },
+        { runtimeMode: 'normal', tunnelActive: false },
+      ),
+    ).toBe('127.0.0.1');
+
+    // Never trust cf-connecting-ip when raw socket is non-loopback, even if request.ip was proxied
+    expect(
+      resolveOriginIp(
+        {
+          ip: '127.0.0.1',
+          headers: { 'cf-connecting-ip': '203.0.113.10' },
+          raw: { socket: { remoteAddress: '198.51.100.77' } },
+        },
+        { runtimeMode: 'normal', tunnelActive: true },
+      ),
+    ).toBe('127.0.0.1');
+
+    // Integration: loopback tunnel isolates Host vs Guest rate limits on /ws
+    const tunnelApp = await createServer({
+      runtimeInfo: {
+        runtimeMode: 'normal',
+        tunnelActive: true,
+        tunnelProvider: 'cloudflare',
+        publicOrigin: 'https://pulso-tunnel.trycloudflare.com',
+      },
+      securityOptions: { wsConnectMax: 1 },
+    });
+    await tunnelApp.ready();
+    cleanups.push(() => tunnelApp.close());
+
+    const hostWs = await tunnelApp.injectWS('/ws', {
+      socket: { remoteAddress: '127.0.0.1' },
+      headers: { 'cf-connecting-ip': '203.0.113.10' },
+    });
+    cleanups.push(() => hostWs.close());
+
+    await expect(
+      tunnelApp.injectWS('/ws', {
+        socket: { remoteAddress: '127.0.0.1' },
+        headers: { 'cf-connecting-ip': '203.0.113.10' },
+      }),
+    ).rejects.toThrow(/429/);
+
+    const guestWs = await tunnelApp.injectWS('/ws', {
+      socket: { remoteAddress: '127.0.0.1' },
+      headers: { 'cf-connecting-ip': '198.51.100.20' },
+    });
+    cleanups.push(() => guestWs.close());
+    expect(guestWs.readyState).toBe(1);
+
+    // Without tunnelActive, spoofing cf-connecting-ip does not isolate buckets
+    const directApp = await createServer({
+      runtimeInfo: { runtimeMode: 'normal' },
+      securityOptions: { wsConnectMax: 1 },
+    });
+    await directApp.ready();
+    cleanups.push(() => directApp.close());
+
+    const directWs1 = await directApp.injectWS('/ws', {
+      socket: { remoteAddress: '127.0.0.1' },
+      headers: { 'cf-connecting-ip': '203.0.113.10' },
+    });
+    cleanups.push(() => directWs1.close());
+
+    await expect(
+      directApp.injectWS('/ws', {
+        socket: { remoteAddress: '127.0.0.1' },
+        headers: { 'cf-connecting-ip': '198.51.100.20' },
+      }),
+    ).rejects.toThrow(/429/);
+
+    // TRUST_PROXY=true enables Fastify trustProxy so x-forwarded-for isolates participants behind Caddy/PaaS
+    const proxyApp = await createServer({
+      trustProxy: true,
+      securityOptions: { wsConnectMax: 1 },
+    });
+    await proxyApp.ready();
+    cleanups.push(() => proxyApp.close());
+
+    const proxiedHostWs = await proxyApp.injectWS('/ws', {
+      socket: { remoteAddress: '10.0.0.2' },
+      headers: { 'x-forwarded-for': '203.0.113.50' },
+    });
+    cleanups.push(() => proxiedHostWs.close());
+
+    await expect(
+      proxyApp.injectWS('/ws', {
+        socket: { remoteAddress: '10.0.0.2' },
+        headers: { 'x-forwarded-for': '203.0.113.50' },
+      }),
+    ).rejects.toThrow(/429/);
+
+    const proxiedGuestWs = await proxyApp.injectWS('/ws', {
+      socket: { remoteAddress: '10.0.0.2' },
+      headers: { 'x-forwarded-for': '198.51.100.60' },
+    });
+    cleanups.push(() => proxiedGuestWs.close());
+    expect(proxiedGuestWs.readyState).toBe(1);
+  });
+
+  it('sends WebSocket protocol ping frames on heartbeat interval (default 35_000ms, unrefed, cleaned up) without altering room expiresAt or emitting activity_reset', async () => {
+    const clock = new ManualClock(1_700_000_000_000);
+    const app = await createServer({
+      clock,
+      wsHeartbeatIntervalMs: 25,
+    });
+    await app.ready();
+    cleanups.push(() => app.close());
+
+    const hostWs = await app.injectWS('/ws');
+    cleanups.push(() => {
+      if (hostWs.readyState === 0 || hostWs.readyState === 1) hostWs.close();
+    });
+
+    const receivedMessages: ServerWsMessage[] = [];
+    hostWs.on('message', (data) => {
+      receivedMessages.push(JSON.parse(data.toString('utf8')) as ServerWsMessage);
+    });
+
+    let pingCount = 0;
+    hostWs.on('ping', () => {
+      pingCount += 1;
+    });
+
+    hostWs.send(
+      JSON.stringify({
+        type: 'create_room',
+        version: WS_PROTOCOL_VERSION,
+        roomCode: 'H7B2-K9P4',
+        displayName: 'Ana',
+        mode: 'normal',
+        inactivityDurationMs: 60_000,
+      }),
+    );
+
+    await vi.waitFor(() => {
+      expect(receivedMessages.some((m) => m.type === 'room_joined')).toBe(true);
+    });
+    const joined = receivedMessages.find((m) => m.type === 'room_joined')!;
+    expect(joined.type === 'room_joined' && joined.expiresAt).toBe(1_700_000_060_000);
+
+    // Wait for multiple protocol-level ping heartbeats
+    await vi.waitFor(() => {
+      expect(pingCount).toBeGreaterThanOrEqual(2);
+    });
+
+    // Heartbeat must NEVER emit activity_reset or extend room.expiresAt
+    expect(receivedMessages.some((m) => m.type === 'activity_reset')).toBe(false);
+    clock.advanceBy(60_000);
+
+    await vi.waitFor(() => {
+      expect(receivedMessages).toContainEqual({
+        type: 'room_expired',
+        version: WS_PROTOCOL_VERSION,
+        reason: 'inactivity',
+      });
+    });
+
+    // Default interval is 35_000ms, unrefed, and cleared on close / app.close
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+    cleanups.push(() => {
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+    });
+
+    const defaultApp = await createServer({ clock });
+    await defaultApp.ready();
+    cleanups.push(() => defaultApp.close());
+
+    const wsDefault = await defaultApp.injectWS('/ws');
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 35_000);
+    const createdHandle = setIntervalSpy.mock.results.at(-1)?.value;
+
+    wsDefault.terminate();
+    await vi.waitFor(() => {
+      expect(clearIntervalSpy).toHaveBeenCalledWith(createdHandle);
+    });
+
+    // Also verify app.close() cleans up any still-open socket heartbeat timers
+    const wsOpenAtClose = await defaultApp.injectWS('/ws');
+    cleanups.push(() => {
+      if (wsOpenAtClose.readyState === 0 || wsOpenAtClose.readyState === 1) wsOpenAtClose.terminate();
+    });
+    const secondHandle = setIntervalSpy.mock.results.at(-1)?.value;
+    await defaultApp.close();
+    expect(clearIntervalSpy).toHaveBeenCalledWith(secondHandle);
   });
 });

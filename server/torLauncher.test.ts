@@ -1,8 +1,8 @@
 // @vitest-environment node
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WS_PROTOCOL_VERSION, type ServerWsMessage } from '../shared/protocol';
 import { ManualClock } from './clock';
@@ -320,5 +320,42 @@ describe('server/torLauncher', () => {
       expect(existsSync(dataDir)).toBe(false);
       expect(handle.app.server.listening).toBe(false);
     });
+  });
+
+  it('defaults dataDir to a unique 0o700 directory under os.tmpdir(), never writes to cwd, and purges on stop', async () => {
+    const fakeCwd = mkdtempSync(join(tmpdir(), 'pulso-ro-cwd-'));
+    cleanups.push(() => rmSync(fakeCwd, { recursive: true, force: true }));
+
+    let capturedDataDir = '';
+    let controller!: ControlledTorController;
+    const handle = await startTorServer({
+      port: 0,
+      cwd: fakeCwd,
+      waitForReady: false,
+      log: () => {},
+      createTorController: (opts) => {
+        capturedDataDir = opts.dataDir ?? '';
+        controller = new ControlledTorController(opts.localPort, capturedDataDir);
+        return controller;
+      },
+    });
+    cleanups.push(() => handle.stop());
+    cleanups.push(() => rmSync(capturedDataDir, { recursive: true, force: true }));
+
+    expect(dirname(capturedDataDir)).toBe(resolve(tmpdir()));
+    expect(basename(capturedDataDir).startsWith('pulso-tor-')).toBe(true);
+    expect(existsSync(capturedDataDir)).toBe(true);
+    expect(existsSync(join(fakeCwd, 'tor_data'))).toBe(false);
+    if (process.platform !== 'win32') {
+      expect(statSync(capturedDataDir).mode & 0o777).toBe(0o700);
+    }
+
+    const realOnion = `http://${'e'.repeat(56)}.onion`;
+    controller.finishReady(realOnion);
+    await handle.ready;
+
+    await handle.stop();
+    expect(existsSync(capturedDataDir)).toBe(false);
+    expect(existsSync(join(fakeCwd, 'tor_data'))).toBe(false);
   });
 });

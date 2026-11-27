@@ -97,7 +97,7 @@ describe('PULSO Fastify server HTTP + WebSocket integration', () => {
 
     const runtimeRes = await fetch(`${address}/api/runtime`);
     expect(runtimeRes.status).toBe(200);
-    expect(await runtimeRes.json()).toEqual({ runtimeMode: 'normal' });
+    expect(await runtimeRes.json()).toEqual({ runtimeMode: 'normal', turnConfigured: false });
 
     const spaRes = await fetch(`${address}/room/X9K2-P7M4`);
     expect(spaRes.status).toBe(200);

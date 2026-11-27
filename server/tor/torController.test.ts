@@ -1,8 +1,19 @@
 // @vitest-environment node
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { Duplex } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -16,8 +27,10 @@ import {
   type ControlAsyncEvent,
 } from './controlProtocol';
 import {
+  TOR_DATA_DIR_PREFIX,
   TorController,
   ensureDarwinBinarySigned,
+  purgeStaleTorDataDirs,
   resolveTorBinary,
 } from './torController';
 
@@ -618,6 +631,110 @@ describe('TorController lifecycle (Duplex + real temp tor_data + dummy tor execu
     });
 
     await expect(controller3.start()).rejects.toThrow(/macOS killed Tor with SIGKILL/i);
+  });
+
+  it('uses a unique 0o700 directory under os.tmpdir() when dataDir is omitted, leaves cwd untouched, and purges on stop/failure', async () => {
+    const fakeCwd = makeTempDir();
+    const controllerA = new TorController({
+      localPort: 3001,
+      cwd: fakeCwd,
+      torBinaryPath: '/nonexistent/tor',
+    });
+    const controllerB = new TorController({
+      localPort: 3002,
+      cwd: fakeCwd,
+      torBinaryPath: '/nonexistent/tor',
+    });
+
+    const dirA = controllerA.dataDir;
+    const dirB = controllerB.dataDir;
+    tempDirs.push(dirA, dirB);
+
+    expect(dirname(dirA)).toBe(resolve(tmpdir()));
+    expect(dirname(dirB)).toBe(resolve(tmpdir()));
+    expect(basename(dirA).startsWith(TOR_DATA_DIR_PREFIX)).toBe(true);
+    expect(basename(dirB).startsWith(TOR_DATA_DIR_PREFIX)).toBe(true);
+    expect(dirA).not.toBe(dirB);
+    expect(existsSync(dirA)).toBe(true);
+    expect(existsSync(join(fakeCwd, 'tor_data'))).toBe(false);
+
+    if (process.platform !== 'win32') {
+      expect(statSync(dirA).mode & 0o777).toBe(0o700);
+    }
+
+    // Failure during start() purges ephemeral tmpdir dataDir
+    await expect(controllerA.start()).rejects.toThrow();
+    expect(existsSync(dirA)).toBe(false);
+    expect(existsSync(join(fakeCwd, 'tor_data'))).toBe(false);
+
+    // stop() also purges ephemeral tmpdir dataDir
+    await controllerB.stop();
+    expect(existsSync(dirB)).toBe(false);
+  });
+});
+
+describe('purgeStaleTorDataDirs', () => {
+  const tempDirs: string[] = [];
+
+  function makeTempDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'pulso-purge-test-'));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    while (tempDirs.length > 0) {
+      const dir = tempDirs.pop();
+      if (dir) {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('removes only stale pulso-tor-* directories while respecting excludePaths, minAgeMs, non-matching entries, and symlinks', async () => {
+    const baseDir = makeTempDir();
+    const nowMs = 1_700_000_000_000;
+    const staleDate = new Date(nowMs - 2 * 60 * 60 * 1000);
+    const freshDate = new Date(nowMs - 1_000);
+
+    const staleDir = join(baseDir, 'pulso-tor-stale1');
+    const excludedStaleDir = join(baseDir, 'pulso-tor-excluded');
+    const freshDir = join(baseDir, 'pulso-tor-fresh1');
+    const unrelatedDir = join(baseDir, 'other-temp-dir');
+    const regularFile = join(baseDir, 'pulso-tor-notadir');
+    const targetDir = join(baseDir, 'real-target');
+    const symlinkDir = join(baseDir, 'pulso-tor-symlink');
+
+    mkdirSync(staleDir, { recursive: true });
+    writeFileSync(join(staleDir, 'torrc'), 'old', 'utf8');
+    mkdirSync(excludedStaleDir, { recursive: true });
+    mkdirSync(freshDir, { recursive: true });
+    mkdirSync(unrelatedDir, { recursive: true });
+    mkdirSync(targetDir, { recursive: true });
+    writeFileSync(regularFile, 'file', 'utf8');
+    symlinkSync(targetDir, symlinkDir);
+
+    utimesSync(staleDir, staleDate, staleDate);
+    utimesSync(excludedStaleDir, staleDate, staleDate);
+    utimesSync(freshDir, freshDate, freshDate);
+    utimesSync(unrelatedDir, staleDate, staleDate);
+    utimesSync(regularFile, staleDate, staleDate);
+
+    const removed = await purgeStaleTorDataDirs({
+      baseDir,
+      excludePaths: [excludedStaleDir],
+      minAgeMs: 60 * 60 * 1000,
+      nowMs,
+    });
+
+    expect(removed).toEqual([staleDir]);
+    expect(existsSync(staleDir)).toBe(false);
+    expect(existsSync(excludedStaleDir)).toBe(true);
+    expect(existsSync(freshDir)).toBe(true);
+    expect(existsSync(unrelatedDir)).toBe(true);
+    expect(existsSync(regularFile)).toBe(true);
+    expect(existsSync(symlinkDir)).toBe(true);
+    expect(existsSync(targetDir)).toBe(true);
   });
 });
 

@@ -12,6 +12,7 @@ import {
   type RuntimeInfo,
 } from '../shared/protocol';
 import { systemClock, type Clock } from './clock';
+import { buildIceServers, hasTurnConfigured } from './iceConfig';
 import { RoomStore, type ClientSession } from './roomStore';
 import {
   MAX_WS_PAYLOAD_BYTES,
@@ -21,10 +22,15 @@ import {
 
 const OPEN_READY_STATE = 1;
 const WS_HARD_MAX_PAYLOAD_MULTIPLIER = 4;
+export const DEFAULT_WS_HEARTBEAT_INTERVAL_MS = 35_000;
+
+export type TrustProxyOption = boolean | string | string[] | number;
 
 export interface CreateServerOptions {
   clock?: Clock;
   staticDir?: string;
+  trustProxy?: TrustProxyOption;
+  wsHeartbeatIntervalMs?: number;
   runtimeInfo?: RuntimeInfo;
   getRuntimeInfo?: () => RuntimeInfo;
   inactivityDurationMs?: number;
@@ -38,7 +44,20 @@ export interface CreateServerOptions {
   onAllRoomsClosed?: () => void;
 }
 
+/**
+ * Resolves Fastify `trustProxy` setting from `TRUST_PROXY` (`true` or `1`).
+ */
+export function resolveTrustProxy(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env.TRUST_PROXY?.trim().toLowerCase();
+  return raw === 'true' || raw === '1';
+}
+
 export function resolveDefaultStaticDir(): string {
+  const envStaticDir = process.env.PULSO_STATIC_DIR?.trim();
+  if (envStaticDir) {
+    return resolve(envStaticDir);
+  }
+
   const currentDir = dirname(fileURLToPath(import.meta.url));
 
   // If running from compiled server inside dist/server/
@@ -76,11 +95,46 @@ function isApiOrControlPath(pathname: string): boolean {
   );
 }
 
-function resolveOriginIp(request: {
-  ip?: string;
-  raw?: { socket?: { remoteAddress?: string } };
-}): string {
-  return request.ip || request.raw?.socket?.remoteAddress || 'unknown';
+function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) return false;
+  const normalized = address.trim().toLowerCase();
+  return normalized === '127.0.0.1' || normalized === '::1' || normalized === '::ffff:127.0.0.1';
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value) && value.length > 0) return value[0];
+  return undefined;
+}
+
+/**
+ * Resolves the client origin IP for anonymized rate-limit hashing.
+ * Only trusts `cf-connecting-ip` (with `x-forwarded-for` first-hop fallback) when
+ * a local reverse tunnel is active and the raw socket peer is loopback.
+ */
+export function resolveOriginIp(
+  request: {
+    ip?: string;
+    headers?: Record<string, string | string[] | undefined>;
+    raw?: { socket?: { remoteAddress?: string } };
+  },
+  runtimeInfo?: RuntimeInfo,
+): string {
+  const socketRemoteAddress = request.raw?.socket?.remoteAddress;
+  if (runtimeInfo?.tunnelActive === true && isLoopbackAddress(socketRemoteAddress)) {
+    const cfConnectingIp = firstHeaderValue(request.headers?.['cf-connecting-ip'])?.trim();
+    if (cfConnectingIp) {
+      return cfConnectingIp;
+    }
+    const forwardedFor = firstHeaderValue(request.headers?.['x-forwarded-for']);
+    if (forwardedFor) {
+      const firstHop = forwardedFor.split(',')[0]?.trim();
+      if (firstHop) {
+        return firstHop;
+      }
+    }
+  }
+  return request.ip || socketRemoteAddress || 'unknown';
 }
 
 function getRawMessageByteLength(rawData: Buffer | ArrayBuffer | Buffer[] | string): number {
@@ -136,6 +190,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
 
   const staticRuntimeInfo: RuntimeInfo = options.runtimeInfo ?? { runtimeMode: 'normal' };
   const resolveRuntimeInfo = options.getRuntimeInfo ?? (() => staticRuntimeInfo);
+  const iceServersProvider = options.iceServersProvider ?? (() => buildIceServers(process.env));
   const roomStore = new RoomStore(clock, {
     inactivityDurationMs: options.inactivityDurationMs,
     hardTtlMs: options.hardTtlMs,
@@ -143,15 +198,31 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
     maxRooms: options.maxRooms,
     security,
     getRuntimeInfo: resolveRuntimeInfo,
-    iceServersProvider: options.iceServersProvider,
+    iceServersProvider,
     onAllRoomsClosed: options.onAllRoomsClosed,
   });
   const staticDir = options.staticDir ?? resolveDefaultStaticDir();
   const originHashByRawRequest = new WeakMap<object, string>();
+  const trustProxy = options.trustProxy ?? resolveTrustProxy();
+  const wsHeartbeatIntervalMs =
+    typeof options.wsHeartbeatIntervalMs === 'number' &&
+    Number.isFinite(options.wsHeartbeatIntervalMs) &&
+    options.wsHeartbeatIntervalMs > 0
+      ? Math.floor(options.wsHeartbeatIntervalMs)
+      : DEFAULT_WS_HEARTBEAT_INTERVAL_MS;
+  const activeHeartbeats = new Set<ReturnType<typeof setInterval>>();
 
   const app = Fastify({
     logger: false,
     logController: new LogController({ disableRequestLogging: true }),
+    trustProxy: typeof trustProxy === 'number' ? false : trustProxy,
+  });
+
+  app.addHook('onClose', async () => {
+    for (const timer of activeHeartbeats) {
+      clearInterval(timer);
+    }
+    activeHeartbeats.clear();
   });
 
   app.setErrorHandler((_error, _request, reply) => {
@@ -180,7 +251,11 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
   });
 
   app.get('/api/runtime', async () => {
-    return sanitizeRuntimeInfo(resolveRuntimeInfo());
+    const runtime = sanitizeRuntimeInfo(resolveRuntimeInfo());
+    if (runtime.runtimeMode === 'normal' && runtime.turnConfigured === undefined) {
+      runtime.turnConfigured = hasTurnConfigured(iceServersProvider());
+    }
+    return runtime;
   });
 
   app.get(
@@ -188,7 +263,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
     {
       websocket: true,
       preHandler: async (request, reply) => {
-        const originHash = security.hashOrigin(resolveOriginIp(request));
+        const originHash = security.hashOrigin(resolveOriginIp(request, resolveRuntimeInfo()));
         if (!security.allowWsConnect(originHash)) {
           return reply.code(429).send({ error: 'Too Many Requests' });
         }
@@ -197,7 +272,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
     },
     (socket, request) => {
       const originHash =
-        originHashByRawRequest.get(request.raw) ?? security.hashOrigin(resolveOriginIp(request));
+        originHashByRawRequest.get(request.raw) ??
+        security.hashOrigin(resolveOriginIp(request, resolveRuntimeInfo()));
       originHashByRawRequest.delete(request.raw);
 
       const session: ClientSession = {
@@ -232,11 +308,31 @@ export async function createServer(options: CreateServerOptions = {}): Promise<F
         }
       });
 
+      const heartbeatTimer = setInterval(() => {
+        if (socket.readyState === OPEN_READY_STATE) {
+          try {
+            socket.ping();
+          } catch {
+            stopHeartbeat();
+          }
+        }
+      }, wsHeartbeatIntervalMs);
+      heartbeatTimer.unref?.();
+      activeHeartbeats.add(heartbeatTimer);
+
+      const stopHeartbeat = () => {
+        if (activeHeartbeats.delete(heartbeatTimer)) {
+          clearInterval(heartbeatTimer);
+        }
+      };
+
       socket.on('close', () => {
+        stopHeartbeat();
         roomStore.handleDisconnect(session);
       });
 
       socket.on('error', () => {
+        stopHeartbeat();
         roomStore.handleDisconnect(session);
       });
     },
