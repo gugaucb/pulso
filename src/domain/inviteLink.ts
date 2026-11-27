@@ -8,6 +8,8 @@ export interface BuildInviteUrlParams {
   secretKey?: string;
   mode?: RoomMode;
   onionAddress?: string;
+  publicOrigin?: string;
+  tunnelActive?: boolean;
 }
 
 export interface ParsedInviteUrl {
@@ -15,6 +17,24 @@ export interface ParsedInviteUrl {
   secretKey?: string;
   mode: RoomMode;
   onionAddress?: string;
+}
+
+function sanitizeHttpOrigin(value?: string): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      parsed.origin !== 'null'
+    ) {
+      return parsed.origin;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 /**
@@ -26,8 +46,15 @@ export function buildInviteUrl({
   secretKey,
   mode = 'normal',
   onionAddress,
+  publicOrigin,
+  tunnelActive = false,
 }: BuildInviteUrlParams): string {
-  const baseOrigin = mode === 'tor' && onionAddress ? onionAddress.replace(/\/+$/, '') : origin.replace(/\/+$/, '');
+  const resolvedPublicOrigin =
+    mode === 'normal' && tunnelActive ? sanitizeHttpOrigin(publicOrigin) : null;
+  const baseOrigin =
+    mode === 'tor' && onionAddress
+      ? onionAddress.replace(/\/+$/, '')
+      : (resolvedPublicOrigin ?? origin.replace(/\/+$/, ''));
   const formattedCode = formatRoomCode(roomCode);
   const url = new URL(`${baseOrigin}/`);
   url.searchParams.set('room', formattedCode);

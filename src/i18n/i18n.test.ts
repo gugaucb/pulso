@@ -49,8 +49,39 @@ describe('i18n core utilities', () => {
       expect(dict.errors.rate_limited.length).toBeGreaterThan(0);
       expect(dict.errors.payload_too_large.length).toBeGreaterThan(0);
       expect(dict.errors.server_at_capacity.length).toBeGreaterThan(0);
+      expect(dict.errors.mediaConnectionFailedNoTurn.length).toBeGreaterThan(0);
+      expect(dict.errors.mediaConnectionFailedNoTurn).toMatch(/NAT/i);
+      expect(dict.errors.mediaConnectionFailedNoTurn).toMatch(/TURN/i);
+      expect(dict.tunnel.badge('Cloudflare')).toContain('Cloudflare');
+      expect(dict.tunnel.transparencyNotice('Cloudflare')).toContain('Cloudflare');
       expect(dict.messages.typingIndicator('Ana').length).toBeGreaterThan(0);
     }
+
+    expect(getDictionary('pt-br').tunnel.transparencyNotice('Cloudflare')).toMatch(
+      /mensagens efêmeras/i,
+    );
+    expect(getDictionary('en').tunnel.transparencyNotice('Cloudflare')).toMatch(
+      /ephemeral messages/i,
+    );
+    expect(getDictionary('es').tunnel.transparencyNotice('Cloudflare')).toMatch(
+      /mensajes efímeros/i,
+    );
+    expect(getDictionary('zh-CN').tunnel.transparencyNotice('Cloudflare')).toMatch(
+      /阅后即焚消息/,
+    );
+
+    expect(getDictionary('pt-br').errors.mediaConnectionFailedNoTurn).toMatch(
+      /chamada de vídeo.*mensagens efêmeras/i,
+    );
+    expect(getDictionary('en').errors.mediaConnectionFailedNoTurn).toMatch(
+      /video call.*ephemeral messages/i,
+    );
+    expect(getDictionary('es').errors.mediaConnectionFailedNoTurn).toMatch(
+      /videollamada.*mensajes efímeros/i,
+    );
+    expect(getDictionary('zh-CN').errors.mediaConnectionFailedNoTurn).toMatch(
+      /视频通话.*阅后即焚消息/,
+    );
   });
 
   it('formats relative timestamps with Intl.RelativeTimeFormat across all 4 locales', () => {
