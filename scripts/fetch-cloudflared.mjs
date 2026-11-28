@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { computeFileSha256, isDirectExecution } from './lib/cli-utils.mjs';
+import { computeFileSha256, extractTarGz, isDirectExecution } from './lib/cli-utils.mjs';
 
 export { computeFileSha256 };
 
@@ -75,6 +75,9 @@ export function buildCloudflaredUrls(version, target) {
   const releaseApiUrl = isLatest
     ? 'https://api.github.com/repos/cloudflare/cloudflared/releases/latest'
     : `https://api.github.com/repos/cloudflare/cloudflared/releases/tags/${version}`;
+  const releasePageUrl = isLatest
+    ? 'https://github.com/cloudflare/cloudflared/releases/latest'
+    : `https://github.com/cloudflare/cloudflared/releases/tag/${version}`;
 
   return {
     target,
@@ -83,6 +86,7 @@ export function buildCloudflaredUrls(version, target) {
     isArchive: spec.isArchive,
     downloadUrl,
     releaseApiUrl,
+    releasePageUrl,
     licenseUrl: `https://raw.githubusercontent.com/cloudflare/cloudflared/${ref}/LICENSE`,
     noticeUrl: `https://raw.githubusercontent.com/cloudflare/cloudflared/${ref}/NOTICE`,
   };
@@ -239,6 +243,56 @@ export async function preserveLicenseFiles({
   }
 }
 
+export function buildGitHubApiHeaders(env = process.env) {
+  const token = String(env.GITHUB_TOKEN || env.GH_TOKEN || '').trim();
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'pulso-fetch-cloudflared',
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+export async function resolveCloudflaredSha256({
+  urls,
+  env = process.env,
+  downloadToBufferFn = downloadToBuffer,
+  logger = console,
+}) {
+  logger.log(`Fetching release checksum metadata from ${urls.releaseApiUrl} ...`);
+  try {
+    const releaseBuf = await downloadToBufferFn(urls.releaseApiUrl, buildGitHubApiHeaders(env));
+    const releaseJson = JSON.parse(releaseBuf.toString('utf8'));
+    const digest = parseSha256FromReleaseJson(releaseJson, urls.filename);
+    if (digest) {
+      return digest;
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!/HTTP (?:403|429)\b/.test(message) || !urls.releasePageUrl) {
+      throw err;
+    }
+    logger.log(`GitHub API rate-limited; falling back to release page ${urls.releasePageUrl} ...`);
+  }
+
+  if (urls.releasePageUrl) {
+    const htmlBuf = await downloadToBufferFn(urls.releasePageUrl, {
+      'User-Agent': 'pulso-fetch-cloudflared',
+    });
+    const plainText = htmlBuf.toString('utf8').replace(/<[^>]+>/g, '\n');
+    const digest = parseSha256FromReleaseNotes(plainText, urls.filename);
+    if (digest) {
+      return digest;
+    }
+  }
+
+  throw new Error(
+    `Could not resolve official SHA-256 for ${urls.filename} from ${urls.releaseApiUrl} or ${urls.releasePageUrl}; provide --sha256 or set GITHUB_TOKEN.`,
+  );
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const opts = parseArgs(argv);
 
@@ -276,18 +330,7 @@ export async function main(argv = process.argv.slice(2)) {
   try {
     let expectedSha256 = opts.sha256;
     if (!expectedSha256) {
-      console.log(`Fetching release checksum metadata from ${urls.releaseApiUrl} ...`);
-      const releaseBuf = await downloadToBuffer(urls.releaseApiUrl, {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'pulso-fetch-cloudflared',
-      });
-      const releaseJson = JSON.parse(releaseBuf.toString('utf8'));
-      expectedSha256 = parseSha256FromReleaseJson(releaseJson, urls.filename);
-      if (!expectedSha256) {
-        throw new Error(
-          `Could not resolve official SHA-256 for ${urls.filename} from ${urls.releaseApiUrl}; provide --sha256 explicitly.`,
-        );
-      }
+      expectedSha256 = await resolveCloudflaredSha256({ urls });
     }
 
     console.log(`Downloading ${urls.downloadUrl} ...`);
@@ -299,7 +342,7 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(`Actual SHA-256:   ${actualSha256}`);
 
     if (urls.isArchive) {
-      execFileSync('tar', ['-xzf', downloadPath, '-C', opts.outDir], { stdio: 'inherit' });
+      extractTarGz(downloadPath, opts.outDir);
     } else if (downloadPath !== expectedBinary) {
       await writeFile(expectedBinary, assetBytes);
     }

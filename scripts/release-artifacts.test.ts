@@ -591,5 +591,53 @@ describe('scripts/release-artifacts.mjs', () => {
       expect(signConfigStep).toBeDefined();
       expect(signConfigStep?.run).toContain('scripts/configure-code-sign.mjs');
     });
+
+    it('configures GITHUB_TOKEN for cloudflared fetch and hardens Linux AppImage bundling (NO_STRIP, APPIMAGE_EXTRACT_AND_RUN, space-free Linux productName)', () => {
+      const { parsed } = parseWorkflowYaml('.github/workflows/release-desktop.yml');
+      const jobs = (parsed.jobs ?? {}) as Record<
+        string,
+        {
+          steps?: Array<{
+            name?: string;
+            uses?: string;
+            env?: Record<string, unknown>;
+            run?: string;
+            with?: { args?: string };
+          }>;
+        }
+      >;
+      const buildSteps = jobs.build?.steps ?? [];
+
+      const fetchCfStep = buildSteps.find(
+        (step) => typeof step.run === 'string' && step.run.includes('fetch-cloudflared.mjs'),
+      );
+      expect(fetchCfStep).toBeDefined();
+      expect(String(fetchCfStep?.env?.GITHUB_TOKEN ?? '')).toContain('secrets.GITHUB_TOKEN');
+
+      const linuxDepsStep = buildSteps.find(
+        (step) => typeof step.name === 'string' && step.name.includes('Install Linux Tauri build dependencies'),
+      );
+      expect(linuxDepsStep?.run).toContain('file');
+      expect(linuxDepsStep?.run).toContain('xdg-utils');
+
+      const tauriStep = buildSteps.find(
+        (step) => typeof step.uses === 'string' && step.uses.startsWith('tauri-apps/tauri-action'),
+      );
+      expect(tauriStep?.env?.NO_STRIP).toBe('true');
+      expect(tauriStep?.env?.APPIMAGE_EXTRACT_AND_RUN).toBe('1');
+      expect(tauriStep?.with?.args).toContain('--verbose');
+      expect(tauriStep?.with?.args).toContain('src-tauri/tauri.linux.');
+
+      for (const [flavor, expectedName] of [
+        ['tor', 'pulso-tor'],
+        ['local', 'pulso-local'],
+      ] as const) {
+        const overlayPath = path.resolve(process.cwd(), `src-tauri/tauri.linux.${flavor}.conf.json`);
+        expect(existsSync(overlayPath)).toBe(true);
+        const overlayJson = JSON.parse(readFileSync(overlayPath, 'utf8')) as { productName?: string };
+        expect(overlayJson.productName).toBe(expectedName);
+        expect(overlayJson.productName).not.toMatch(/\s/);
+      }
+    });
   });
 });

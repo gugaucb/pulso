@@ -7,11 +7,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_CLOUDFLARED_VERSION,
   buildCloudflaredUrls,
+  buildGitHubApiHeaders,
   computeFileSha256,
   parseArgs,
   parseSha256FromReleaseJson,
   parseSha256FromReleaseNotes,
   preserveLicenseFiles,
+  resolveCloudflaredSha256,
   resolveCloudflaredTarget,
   signMacOsCloudflaredBinary,
   verifyLocalFileSha256,
@@ -163,5 +165,44 @@ describe('scripts/fetch-cloudflared.mjs helpers', () => {
     expect(readFileSync(join(dir, 'LICENSE'), 'utf8')).toContain('Apache License');
     expect(existsSync(join(dir, 'NOTICE'))).toBe(true);
     expect(readFileSync(join(dir, 'NOTICE'), 'utf8')).toContain('Cloudflare');
+  });
+
+  it('includes Bearer token in GitHub API headers and falls back to release HTML page on HTTP 403/429 rate limit', async () => {
+    expect(buildGitHubApiHeaders({})).not.toHaveProperty('Authorization');
+    expect(buildGitHubApiHeaders({ GITHUB_TOKEN: 'tok_123' })).toMatchObject({
+      Accept: 'application/vnd.github+json',
+      Authorization: 'Bearer tok_123',
+    });
+    expect(buildGitHubApiHeaders({ GH_TOKEN: 'gh_456' })).toMatchObject({
+      Authorization: 'Bearer gh_456',
+    });
+
+    const urls = buildCloudflaredUrls('2025.11.1', 'darwin-arm64');
+    expect(urls.releasePageUrl).toBe(
+      'https://github.com/cloudflare/cloudflared/releases/tag/2025.11.1',
+    );
+
+    const expectedHash = 'e'.repeat(64);
+    const seenCalls: Array<{ url: string; headers?: Record<string, string> }> = [];
+    const downloadMock = vi.fn(async (url: string, headers: Record<string, string> = {}) => {
+      seenCalls.push({ url, headers });
+      if (url === urls.releaseApiUrl) {
+        throw new Error(`Failed to fetch ${url}: HTTP 403 rate limit exceeded`);
+      }
+      return Buffer.from(
+        `<html><body><p>cloudflared-darwin-arm64.tgz: ${expectedHash}</p></body></html>`,
+        'utf8',
+      );
+    });
+
+    const resolved = await resolveCloudflaredSha256({
+      urls,
+      env: { GITHUB_TOKEN: 'tok_123' },
+      downloadToBufferFn: downloadMock,
+    });
+
+    expect(resolved).toBe(expectedHash);
+    expect(seenCalls[0]?.headers?.Authorization).toBe('Bearer tok_123');
+    expect(seenCalls.some((call) => call.url === urls.releasePageUrl)).toBe(true);
   });
 });

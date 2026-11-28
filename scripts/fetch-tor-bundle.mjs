@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { computeFileSha256, isDirectExecution } from './lib/cli-utils.mjs';
+import { computeFileSha256, extractTarGz, isDirectExecution } from './lib/cli-utils.mjs';
 
 export { computeFileSha256 };
 
@@ -470,7 +470,7 @@ export async function main() {
       throw new Error(`SHA-256 verification failed for ${urls.filename}`);
     }
 
-    execFileSync('tar', ['-xzf', archivePath, '-C', opts.outDir], { stdio: 'inherit' });
+    extractTarGz(archivePath, opts.outDir);
 
     const binaryName = target.startsWith('windows-') ? 'tor.exe' : 'tor';
     const expectedBinary = path.join(opts.outDir, 'tor', binaryName);

@@ -16,6 +16,7 @@ import {
   signMacOsBundleBinaries,
   verifyChecksumsPgpSignature,
 } from './fetch-tor-bundle.mjs';
+import { extractTarGz } from './lib/cli-utils.mjs';
 
 describe('scripts/fetch-tor-bundle.mjs helpers', () => {
   const tempDirs: string[] = [];
@@ -324,5 +325,50 @@ describe('scripts/fetch-tor-bundle.mjs helpers', () => {
         warnFn: () => {},
       }),
     ).rejects.toThrow(/HTTP 429 Too Many Requests|keyserver receive failed/i);
+  });
+
+  it('extracts .tar.gz archives on Windows without triggering GNU tar remote-host D: parsing', () => {
+    const tarCalls: Array<{ cmd: string; args: string[]; opts: Record<string, unknown> }> = [];
+    const execSpy = vi.fn((cmd: string, args: string[], opts: Record<string, unknown>) => {
+      tarCalls.push({ cmd, args, opts });
+      return '';
+    });
+
+    extractTarGz(
+      'D:\\a\\pulso\\pulso\\.tor-bin\\tor-expert-bundle-windows-x86_64-16.0.tar.gz',
+      'D:\\a\\pulso\\pulso\\.tor-bin',
+      {
+        platform: 'win32',
+        execFileSyncFn: execSpy as unknown as typeof import('node:child_process').execFileSync,
+      },
+    );
+
+    expect(tarCalls[0]).toEqual({
+      cmd: 'tar',
+      args: ['-xzf', 'tor-expert-bundle-windows-x86_64-16.0.tar.gz'],
+      opts: { cwd: 'D:\\a\\pulso\\pulso\\.tor-bin', stdio: 'inherit' },
+    });
+    expect(tarCalls[0]!.args.join(' ')).not.toContain(':');
+
+    extractTarGz(
+      'C:\\temp\\tor-expert-bundle-windows-x86_64-16.0.tar.gz',
+      'D:\\a\\pulso\\pulso\\.tor-bin',
+      {
+        platform: 'win32',
+        execFileSyncFn: execSpy as unknown as typeof import('node:child_process').execFileSync,
+      },
+    );
+
+    expect(tarCalls[1]).toEqual({
+      cmd: 'tar',
+      args: [
+        '--force-local',
+        '-xzf',
+        'C:/temp/tor-expert-bundle-windows-x86_64-16.0.tar.gz',
+        '-C',
+        'D:/a/pulso/pulso/.tor-bin',
+      ],
+      opts: { stdio: 'inherit' },
+    });
   });
 });
