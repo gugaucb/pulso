@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,6 +9,7 @@ import {
   createPortableZip,
   formatReleaseArtifactName,
   parseArgs,
+  patchLinuxTorRpath,
   stageFlavorResources,
   verifyMacOsAdHocSignatures,
 } from './package-desktop.mjs';
@@ -240,5 +241,67 @@ describe('scripts/package-desktop.mjs', () => {
         outDmgPath,
       ]),
     );
+  });
+
+  it('sets $ORIGIN RUNPATH via patchelf on staged Linux Tor ELF binaries and skips symlinks/data files', async () => {
+    const root = makeTempDir('pulso-pkg-linux-rpath-');
+    const torSourceDir = path.join(root, '.tor-bin', 'tor');
+    const tauriDir = path.join(root, 'src-tauri');
+    mkdirSync(path.join(torSourceDir, 'pluggable_transports'), { recursive: true });
+    mkdirSync(path.join(tauriDir, 'binaries'), { recursive: true });
+
+    writeFileSync(path.join(torSourceDir, 'tor'), 'tor-elf');
+    writeFileSync(path.join(torSourceDir, 'libevent-2.1.so.7'), 'libevent-elf');
+    writeFileSync(path.join(torSourceDir, 'libssl.so.3'), 'libssl-elf');
+    writeFileSync(path.join(torSourceDir, 'libcrypto.so.3'), 'libcrypto-elf');
+    writeFileSync(path.join(torSourceDir, 'geoip'), 'geoip-data');
+    writeFileSync(path.join(torSourceDir, 'pluggable_transports', 'lyrebird'), 'lyrebird');
+    symlinkSync('libevent-2.1.so.7', path.join(torSourceDir, 'libevent.so'));
+
+    const execSpy = vi.fn();
+    await stageFlavorResources({
+      flavor: 'tor',
+      targetTriple: 'aarch64-unknown-linux-gnu',
+      platform: 'linux',
+      torSourceDir,
+      tauriDir,
+      execFileSyncFn: execSpy,
+    });
+
+    const stagedTorDir = path.join(tauriDir, 'resources', 'tor');
+    const patchelfTargets = execSpy.mock.calls
+      .filter((call) => call[0] === 'patchelf')
+      .map((call) => call[1]);
+
+    expect(patchelfTargets).toEqual(
+      expect.arrayContaining([
+        ['--set-rpath', '$ORIGIN', path.join(stagedTorDir, 'tor')],
+        ['--set-rpath', '$ORIGIN', path.join(stagedTorDir, 'libevent-2.1.so.7')],
+        ['--set-rpath', '$ORIGIN', path.join(stagedTorDir, 'libssl.so.3')],
+        ['--set-rpath', '$ORIGIN', path.join(stagedTorDir, 'libcrypto.so.3')],
+      ]),
+    );
+    expect(patchelfTargets).toHaveLength(4);
+    expect(
+      patchelfTargets.some(
+        (args) => args[2]!.endsWith('geoip') || args[2]!.endsWith('libevent.so'),
+      ),
+    ).toBe(false);
+
+    // Direct call works on an existing directory and non-Linux hosts skip patchelf
+    const crossSpy = vi.fn();
+    await stageFlavorResources({
+      flavor: 'tor',
+      targetTriple: 'x86_64-unknown-linux-gnu',
+      platform: 'darwin',
+      torSourceDir,
+      tauriDir,
+      execFileSyncFn: crossSpy,
+    });
+    expect(crossSpy).not.toHaveBeenCalled();
+
+    const directSpy = vi.fn();
+    patchLinuxTorRpath(stagedTorDir, directSpy);
+    expect(directSpy).toHaveBeenCalledTimes(4);
   });
 });

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
 import { cp, mkdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,6 +17,22 @@ const TRIPLE_TO_ARTIFACT_SLUG = new Map([
 
 function codesignAdHoc(targetPath, execFileSyncFn = execFileSync) {
   execFileSyncFn('codesign', ['-s', '-', '--force', targetPath], { stdio: 'ignore' });
+}
+
+/**
+ * Sets ELF `RUNPATH` to `$ORIGIN` on staged Linux `tor` and shared libraries (`*.so*`)
+ * so `linuxdeploy` (`ldd`) and runtime execution resolve sibling `libevent-2.1.so.7`,
+ * `libssl.so.3`, and `libcrypto.so.3` directly from the bundled `tor/` directory.
+ */
+export function patchLinuxTorRpath(torDestDir, execFileSyncFn = execFileSync) {
+  if (!existsSync(torDestDir)) return;
+  for (const entry of readdirSync(torDestDir)) {
+    if (entry !== 'tor' && !/\.so(?:\.|$)/.test(entry)) continue;
+    const candidate = path.join(torDestDir, entry);
+    if (lstatSync(candidate).isFile()) {
+      execFileSyncFn('patchelf', ['--set-rpath', '$ORIGIN', candidate], { stdio: 'ignore' });
+    }
+  }
 }
 
 export function formatReleaseArtifactName({ flavor, version, targetTriple, ext }) {
@@ -128,12 +144,14 @@ export async function stageFlavorResources({
   torSourceDir = path.resolve(process.cwd(), '.tor-bin', 'tor'),
   cloudflaredSourceDir = path.resolve(process.cwd(), '.cloudflared-bin'),
   tauriDir = path.resolve(process.cwd(), 'src-tauri'),
+  platform = process.platform,
   execFileSyncFn = execFileSync,
 } = {}) {
   const binariesDir = path.join(tauriDir, 'binaries');
   const torDestDir = path.join(tauriDir, 'resources', 'tor');
   const isWindows = targetTriple.includes('windows');
   const isDarwin = targetTriple.includes('apple-darwin');
+  const isLinux = targetTriple.includes('linux');
   const ext = isWindows ? '.exe' : '';
 
   await mkdir(binariesDir, { recursive: true });
@@ -174,6 +192,10 @@ export async function stageFlavorResources({
       }
       if (existsSync(torBin)) codesignAdHoc(torBin, execFileSyncFn);
       if (existsSync(lyrebirdBin)) codesignAdHoc(lyrebirdBin, execFileSyncFn);
+    }
+
+    if (isLinux && platform === 'linux') {
+      patchLinuxTorRpath(torDestDir, execFileSyncFn);
     }
 
     return { flavor, targetTriple, torDestDir, sidecarPath };
