@@ -570,7 +570,7 @@ describe('scripts/release-artifacts.mjs', () => {
 
       const signConfigStep = buildSteps.find((step) => step.id === 'code_sign');
       expect(signConfigStep).toBeDefined();
-      expect(signConfigStep?.run).toContain('GITHUB_ENV');
+      expect(signConfigStep?.run).toContain('scripts/configure-code-sign.mjs');
     });
   });
 });
