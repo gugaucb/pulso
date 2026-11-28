@@ -80,8 +80,9 @@ jobs:
           echo "GET /api/runtime -> ${RUNTIME}"
           echo "${RUNTIME}" | grep -q '"runtimeMode":"normal"'
 
-          INSPECT_STATE="$(docker inspect --format '{{.State.Running}} uid={{.Config.User}}' pulso:smoke)"
+          INSPECT_STATE="$(docker inspect --type container --format '{{.State.Running}} uid={{.Config.User}}' pulso-smoke)"
           echo "Container state: ${INSPECT_STATE}"
+          echo "${INSPECT_STATE}" | grep -q '^true '
 
       - name: Clean up smoke-test container
         if: always()

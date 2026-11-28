@@ -377,6 +377,25 @@ describe('scripts/release-artifacts.mjs', () => {
       expect(raw).toContain('/healthz');
       expect(raw).toContain('/api/runtime');
     });
+
+    it('inspects the running pulso-smoke container rather than the pulso:smoke image for .State.Running', () => {
+      const { parsed } = parseWorkflowYaml('.github/workflows/release-server.yml');
+      const jobs = (parsed.jobs ?? {}) as Record<
+        string,
+        { steps?: Array<{ name?: string; run?: unknown }> }
+      >;
+      const smokeSteps = jobs['smoke-test']?.steps ?? [];
+      const inspectLines = smokeSteps
+        .flatMap((step) => (typeof step.run === 'string' ? step.run.split(/\r?\n/) : []))
+        .filter((line) => line.includes('docker inspect') && line.includes('.State.'));
+
+      expect(inspectLines.length).toBeGreaterThan(0);
+      for (const line of inspectLines) {
+        expect(line).not.toContain('pulso:smoke');
+        expect(line).toContain('--type container');
+        expect(line).toContain('pulso-smoke');
+      }
+    });
   });
 
   describe('Slice 6: .github/workflows/release-desktop.yml validation', () => {
